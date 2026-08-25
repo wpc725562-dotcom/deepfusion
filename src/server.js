@@ -225,7 +225,7 @@ async function handleStreamChat(req, res, body) {
   const conv = body.conversationId ? getConversation(body.conversationId) : null;
   const c = conv || createConversation(message.slice(0, 30));
   appendMessage(c, 'user', message);
-  const prompt = AGENT_BOOT + '\n\n【对话记录】\n' + buildContextPrompt(c, message);
+  const prompt = '【历史对话】\n' + (buildContextPrompt(c) || '（无）') + '\n\n' + AGENT_BOOT + '\n\n【当前任务】\n用户: ' + message;
   const runId = 'run_' + Date.now().toString(36);
 
   res.writeHead(200, {
@@ -335,7 +335,7 @@ const server = http.createServer(async (req, res) => {
       const conv = body.conversationId ? getConversation(body.conversationId) : null;
       const c = conv || createConversation(message.slice(0, 30));
       appendMessage(c, 'user', message);
-      const prompt = AGENT_BOOT + '\n\n【对话记录】\n' + buildContextPrompt(c, message);
+      const prompt = '【历史对话】\n' + (buildContextPrompt(c) || '（无）') + '\n\n' + AGENT_BOOT + '\n\n【当前任务】\n用户: ' + message;
       const r = await runReasonixTask({
         prompt,
         cwd: process.cwd(),

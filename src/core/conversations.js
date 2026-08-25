@@ -86,15 +86,16 @@ export function appendMessage(conv, role, content, usage = null) {
   return conv;
 }
 
-/** 构造多轮上下文 prompt（最近 MAX 条，越新越重要） */
-export function buildContextPrompt(conv, current, maxMessages = 8) {
+/** 构造多轮上下文 prompt：只返回「压缩历史」，不含当前问题（由调用方追加） */
+export function buildContextPrompt(conv, maxMessages = 4, perMsgLen = 600) {
   const parts = [];
   const recent = conv.messages.slice(-maxMessages);
   for (const m of recent) {
     if (m.role === 'user' || m.role === 'assistant') {
-      parts.push((m.role === 'user' ? '用户' : '助手') + ': ' + m.content.slice(0, 2000));
+      const tag = m.role === 'user' ? '用户' : '助手';
+      const body = m.content.slice(0, perMsgLen);
+      parts.push(tag + ': ' + body.replace(/\n{3,}/g, '\n\n'));
     }
   }
-  parts.push('用户: ' + current);
   return parts.join('\n\n');
 }
