@@ -338,3 +338,25 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   transition: all .15s; cursor: pointer;
 }
 .btn-retry:hover { background: var(--accent-dim); }
+/* ===== 📱 手机访问面板 ===== */
+.modal-wide { width: min(760px, 94vw); max-height: 88vh; overflow-y: auto; }
+.pocket-desc { color: var(--dim, #9aa0a6); font-size: 12px; margin: 4px 0 12px; }
+.pocket-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 720px) { .pocket-grid { grid-template-columns: 1fr; } }
+.pocket-card { background: var(--panel, #141824); border: 1px solid var(--border-soft, #232838); border-radius: 12px; padding: 14px; }
+.pocket-card h3 { margin: 0 0 10px; font-size: 14px; }
+.pocket-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; flex-wrap: wrap; }
+.pocket-row label { min-width: 74px; color: var(--dim, #9aa0a6); }
+.pocket-row select, .pocket-row input { background: var(--bg2, #0f1117); border: 1px solid var(--border-soft, #2a3040); color: var(--fg, #e8eaed); border-radius: 6px; padding: 6px 8px; font-size: 13px; }
+.pocket-pin { font-size: 12px; color: var(--dim, #9aa0a6); margin: 8px 0 4px; word-break: break-all; }
+.pocket-pin b { color: var(--fg, #e8eaed); letter-spacing: 1px; }
+.pocket-qr { text-align: center; margin-top: 10px; }
+.pocket-qr img { width: 180px; height: 180px; background: #fff; border-radius: 10px; padding: 8px; }
+.pocket-url { font-size: 12px; color: #8ab4f8; word-break: break-all; margin: 6px 0; }
+.pocket-hint { font-size: 11px; color: var(--dim, #9aa0a6); }
+.pk-btn { font-size: 12px; padding: 4px 10px; }
+.pk-btn.danger { color: #f28b82; border-color: #f28b8255; }
+.pk-toggle { cursor: pointer; padding: 4px 10px; border: 1px solid var(--border-soft, #2a3040); border-radius: 999px; font-size: 12px; }
+.pk-disc { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; color: #fbbc04; margin: 8px 0; line-height: 1.5; }
+.pocket-custom { border-top: 1px dashed var(--border-soft, #2a3040); margin-top: 8px; padding-top: 8px; }
+.hidden { display: none !important; }

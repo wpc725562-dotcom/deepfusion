@@ -1,6 +1,6 @@
 {
   "name": "deepfusion",
-  "version": "0.1.0",
+  "version": "0.6.0",
   "description": "DeepFusion 深融 —— DSH × Reasonix 融合 Agent 引擎：DSH 式编排（任务队列/多Agent/Web工作台） + Reasonix 式执行（ACP 桥接 + 前缀缓存优化）",
   "type": "module",
   "main": "electron/main.cjs",
@@ -11,12 +11,18 @@
     "start": "node src/index.js web",
     "web": "node src/server.js",
     "test": "node src/test-acp.js",
+    "test:pocket": "node --test packages/dshtunnel/test/test.js",
     "desktop": "electron .",
     "desktop:dev": "electron . --dev",
     "build:desktop": "electron-builder --win",
     "build:desktop:portable": "electron-builder --win portable"
   },
   "license": "MIT",
+  "dependencies": {
+    "dijkstrajs": "^1.0.3",
+    "pngjs": "^5.0.0",
+    "qrcode": "^1.5.4"
+  },
   "engines": {
     "node": ">=20"
   },
@@ -35,6 +41,7 @@
     "files": [
       "electron/**/*",
       "src/**/*",
+      "packages/**/*",
       "package.json",
       "README.md"
     ],

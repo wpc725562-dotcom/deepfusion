@@ -1,0 +1,43 @@
+{
+  "name": "dshtunnel",
+  "version": "1.0.0",
+  "description": "把任意本地服务装进手机：局域网 + 公网（cloudflared 隧道，可自定义配置）+ 8 位 PIN 扫码访问",
+  "type": "module",
+  "main": "lib/index.js",
+  "bin": {
+    "dshtunnel": "bin/dshtunnel.mjs"
+  },
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/test.js"
+  },
+  "dependencies": {
+    "dijkstrajs": "^1.0.3",
+    "pngjs": "^5.0.0",
+    "qrcode": "^1.5.4"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "deepfusion",
+    "mobile",
+    "remote",
+    "qr",
+    "tunnel",
+    "cloudflared",
+    "phone-access"
+  ],
+  "license": "MIT"
+}

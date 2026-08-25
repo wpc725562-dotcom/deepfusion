@@ -27,6 +27,7 @@ import { skillCmd } from './cli/skill.js';
 import { mcpCmd } from './cli/mcp.js';
 import { doctorCmd } from './cli/doctor.js';
 import { sessionCmd } from './cli/session.js';
+import { tunnelCmd } from './cli/tunnel.js';
 import { loadConfig as loadCfg, CONFIG_DIR, ensureDirs } from './core/config.js';
 
 const [cmd, ...args] = process.argv.slice(2);
@@ -97,6 +98,7 @@ async function main() {
     case 'mcp': { await mcpCmd(process.argv.slice(3)); break; }
     case 'doctor': { await doctorCmd(); break; }
     case 'session': { await sessionCmd(process.argv.slice(3)); break; }
+    case 'tunnel': { await tunnelCmd(process.argv.slice(3)); break; }
     case 'config': {
       const cfg = loadCfg();
       ensureDirs();
@@ -119,7 +121,7 @@ async function main() {
       console.log('  skill           技能管理');
       console.log('  mcp             MCP 管理');
       console.log('  config          配置管理');
-      console.log('  session         会话管理');
+      console.log('  tunnel          手机访问（局域网/公网/PIN）');
       console.log('  ledger          成本台账');
       console.log('  doctor          诊断');
       console.log('  engine/detect   引擎状态');

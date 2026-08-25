@@ -19,11 +19,13 @@
 | 📋 **任务队列** | pending → assigned → done 状态机 + 并发调度 |
 | 💰 **成本台账** | 每次执行的 token 消耗 + 缓存命中率 |
 | 🖥 **桌面应用** | Electron 壳：单实例/托盘/内置 server/窗口状态 |
+| 📱 **手机访问** | 内置 dshtunnel：局域网扫码 + 公网隧道（可自定义配置）+ 8 位 PIN，手机实时同屏（见 [docs/PHONE-ACCESS.md](docs/PHONE-ACCESS.md)） |
 | 🔗 **DSH 桥** | cordis.patch 挂载，复用 DSH 插件生态 |
 
 ## 🚀 快速开始
 
 ```bash
+# 0. 手机访问（可选）：启动后左下角「📱 手机访问」扫码即可；详见 docs/PHONE-ACCESS.md
 # 1. 安装 reasonix 引擎（已装则跳过）
 npm i -g reasonix
 

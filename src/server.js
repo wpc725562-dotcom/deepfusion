@@ -41,6 +41,9 @@ import { runReasonixTask } from './engine/runner.js';
 import { createGoal, getGoal, listGoals, resumeGoal } from './core/goals.js';
 import { createOrchestration, getOrchestration, listOrchestrations } from './core/orchestration.js';
 import { createJob, getJob, listJobs, killJob } from './core/jobs.js';
+import { createTunnelService } from './dshtunnel/index.js';
+import * as pocketSettings from './dshtunnel/index.js';
+import { CONFIG_DIR } from './core/config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(__dirname, 'web');
@@ -49,6 +52,7 @@ let PORT = Number(process.env.DEEPFUSION_PORT || 43210);
 const DATA_DIR = path.join(process.cwd(), 'data');
 const LEDGER_FILE = path.join(DATA_DIR, 'ledger.json');
 const BATCH_LIMIT = 3;
+let pocketService = null;
 const MODELS = ['tokenrhythm/deepseek-v4-flash', 'tokenrhythm/deepseek-v4-pro', 'tokenrhythm/glm-5.2', 'tokenrhythm/kimi-k2.5', 'tokenrhythm/qwen3.7-max'];
 const DEFAULT_MODEL = 'tokenrhythm/deepseek-v4-flash'; // 可用且有计费的 provider
 
@@ -271,6 +275,7 @@ const server = http.createServer(async (req, res) => {
   const method = req.method;
 
   try {
+    if (p.startsWith('/api/pocket') && pocketService) return await handlePocketRpc(req, res, pocketService);
     if (method === 'GET' && p === '/api/health') return ok(res, { ok: true, name: 'deepfusion', time: new Date().toISOString() });
     if (method === 'GET' && p === '/api/overview') return ok(res, { ...overview(), port: PORT, models: MODELS });
     if (method === 'GET' && p === '/api/engine') return ok(res, { ...engineConfig(), port: PORT });
@@ -518,8 +523,23 @@ async function startServer() {
     PORT = PORT + 1;
   }
 
-  server.listen(PORT, HOST, () => {
+  server.listen(PORT, HOST, async () => {
     console.log('DeepFusion 工作台已启动: http://' + HOST + ':' + PORT);
+    // 启动手机访问服务
+    try {
+      const pocketPort = Number(process.env.DEEPFUSION_POCKET_PORT || 3082);
+      const tunnelService = createTunnelService({ dshPort: PORT, port: pocketPort, home: CONFIG_DIR });
+      await tunnelService.startProxy();
+      console.log('📱 dshtunnel 局域网代理已就绪（端口 ' + pocketPort + '）');
+      tunnelService.restoreTunnelIfNeeded().catch(() => {});
+      pocketService = tunnelService;
+      // 进程退出清理
+      const cleanup = () => { tunnelService.dispose().catch(() => {}); };
+      process.on('SIGINT', cleanup);
+      process.on('exit', cleanup);
+    } catch (e) {
+      console.warn('⚠️  dshtunnel 启动失败:', e.message);
+    }
   });
 }
 
@@ -527,3 +547,71 @@ startServer().catch(e => {
   console.error('[server] 启动失败:', e.message || e);
   process.exit(1);
 });
+
+
+/** 手机访问 API RPC（仅 loopback 可调，无认证风险） */
+async function handlePocketRpc(req, res, service) {
+  const url = new URL(req.url, 'http://x');
+  const p = url.pathname;
+  const method = req.method;
+  const home = CONFIG_DIR;
+  function ok(data) { return sendJson(res, 200, { ok: true, ...data }); }
+  function fail(msg) { return sendJson(res, 400, { ok: false, error: msg }); }
+  function readBody() { return new Promise((res2) => { let raw = ''; req.on('data', d => { raw += d; if (raw.length > 65536) req.destroy(); }); req.on('end', () => { try { res2(raw ? JSON.parse(raw) : {}); } catch { res2({}); } }); req.on('error', () => res2({})); }); }
+
+  if (method === 'GET' && p === '/api/pocket/status') {
+    const st = await service.status();
+    return ok({
+      ...st,
+      accessToken: pocketSettings.getPublicPin(home),
+      lanToken: pocketSettings.getLanPin(home),
+      lanAuthEnabled: pocketSettings.lanAuthEnabled(home),
+      publicPinCustom: pocketSettings.pinCustom(home, 'public'),
+      lanPinCustom: pocketSettings.pinCustom(home, 'lan'),
+      port: Number(process.env.DEEPFUSION_POCKET_PORT || 3082),
+    });
+  }
+  if (method === 'POST' && p === '/api/pocket/lan/auth') {
+    const body = await readBody();
+    pocketSettings.setLanAuthEnabled(home, body.on === true);
+    return ok({ lanAuthEnabled: pocketSettings.lanAuthEnabled(home) });
+  }
+  if (method === 'POST' && p === '/api/pocket/lan/pin/refresh') {
+    const fresh = pocketSettings.refreshLanPin(home);
+    return ok({ lanToken: fresh });
+  }
+  if (method === 'POST' && p === '/api/pocket/lan/ip') {
+    try { pocketSettings.setLanIpOverride(home, (await readBody()).ip || ''); } catch (e) { return fail(e.message); }
+    const st = await service.status();
+    return ok({ ...st });
+  }
+  if (method === 'POST' && p === '/api/pocket/pin/custom') {
+    const body = await readBody();
+    const which = body.which === 'public' || body.which === 'lan' ? body.which : null;
+    if (!which) return fail('未知密码类型');
+    try { pocketSettings.writePin(home, which, body.value); } catch (e) { return fail(e.message); }
+    pocketSettings.setPinCustom(home, which, true);
+    return ok({ which, pin: String(body.value || ''), custom: true });
+  }
+  if (method === 'POST' && p === '/api/pocket/tunnel/start') {
+    const body = await readBody();
+    if (body.disclaimer !== true) return fail('请先阅读并勾选安全免责声明 | please accept the security disclaimer');
+    await service.startTunnel();
+    const st = await service.status();
+    return ok({ ...st, accessToken: pocketSettings.getPublicPin(home) });
+  }
+  if (method === 'POST' && p === '/api/pocket/tunnel/stop') {
+    service.stopTunnel();
+    const st = await service.status();
+    return ok({ ...st });
+  }
+  if (method === 'GET' && p === '/api/pocket/tunnel/config') {
+    return ok({ config: pocketSettings.tunnelConfig(home) });
+  }
+  if (method === 'POST' && p === '/api/pocket/tunnel/config') {
+    const body = await readBody();
+    try { pocketSettings.saveTunnelConfig(home, body); } catch (e) { return fail(e.message); }
+    return ok({ config: pocketSettings.tunnelConfig(home) });
+  }
+  return fail('unknown pocket endpoint: ' + p);
+}

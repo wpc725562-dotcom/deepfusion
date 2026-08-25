@@ -766,3 +766,162 @@ openConversation = async function(cid) {
   await _origOpenConv(cid);
   renderContextPanel();
 };
+
+/* ========== 📱 手机访问面板（dshtunnel） ========== */
+let pocketTimer = null;
+$('btn-phone')?.addEventListener('click', openPhoneModal);
+
+function openPhoneModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-mask';
+  overlay.innerHTML = `
+    <div class="modal modal-wide">
+      <h2>📱 手机访问</h2>
+      <p class="pocket-desc">手机扫码打开电脑上的 DeepFusion，实时同步。局域网可免密直连；公网始终需要 8 位访问密码。</p>
+      <div class="pocket-grid">
+        <div class="pocket-card" id="pk-lan">
+          <h3>📶 局域网（同一 WiFi）</h3>
+          <div id="pk-lan-body">加载中…</div>
+        </div>
+        <div class="pocket-card" id="pk-pub">
+          <h3>🌐 公网（人在外面）</h3>
+          <div id="pk-pub-body">加载中…</div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="pocket-close">关闭</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  wirePocketActions(overlay);
+  refreshPocketModal(overlay);
+  pocketTimer = setInterval(() => refreshPocketModal(overlay), 5000);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closePhoneModal(overlay); });
+  overlay.querySelector('#pocket-close').onclick = () => closePhoneModal(overlay);
+}
+
+function closePhoneModal(overlay) {
+  if (pocketTimer) { clearInterval(pocketTimer); pocketTimer = null; }
+  overlay.remove();
+}
+
+async function refreshPocketModal(overlay) {
+  try {
+    const j = await api('/api/pocket/status');
+    if (!j.ok) return;
+    renderPocket(overlay, j);
+  } catch {}
+}
+
+function renderPocket(overlay, j) {
+  const lanBody = overlay.querySelector('#pk-lan-body');
+  const pubBody = overlay.querySelector('#pk-pub-body');
+  if (!lanBody || !pubBody) return;
+  const st = j;
+  const stateLabel = st.tunnelState ? (st.tunnelState.phase === 'ready' ? '✅ 已开启' : st.tunnelState.phase === 'idle' ? '⏸ 已关闭' : '⏳ ' + (st.tunnelState.detail || st.tunnelState.phase)) : (st.tunnelRunning ? '✅ 已开启' : '⏸ 已关闭');
+
+  // 局域网
+  lanBody.innerHTML = `
+    <div class="pocket-row"><label>局域网地址</label>
+      <select id="pk-lan-ip">${(st.lanCandidates || []).map(ip => '<option value="' + esc(ip) + '"' + (ip === st.lanIpOverride ? ' selected' : '') + '>' + esc(ip) + '</option>').join('')}<option value="">自动（推荐）</option></select>
+    </div>
+    <div class="pocket-row"><label>访问密码</label>
+      <span class="pk-toggle" id="pk-lan-auth" data-on="${st.lanAuthEnabled ? '1' : '0'}">${st.lanAuthEnabled ? '🔒 开' : '🔓 关'}</span>
+      <button class="btn-ghost pk-btn" data-act="lan-refresh">刷新</button>
+      <button class="btn-ghost pk-btn" data-act="pin-custom" data-which="lan">自定义</button>
+    </div>
+    <div class="pocket-pin">局域网 PIN：<b>${esc(st.lanToken)}</b>${st.lanPinCustom ? '（已自定义，不自动换）' : ''}</div>
+    ${st.lanUrl ? '<div class="pocket-qr"><img src="' + st.lanQr + '" alt="LAN QR"><div class="pocket-url">' + esc(st.lanUrl) + '</div><div class="pocket-hint">手机连同一 WiFi 扫码打开' + (st.lanAuthEnabled ? '（需输入局域网 PIN）' : '（免密直连）') + '</div></div>' : '<div class="pocket-hint">未检测到局域网 IP</div>'}
+  `;
+
+  // 公网
+  pubBody.innerHTML = `
+    <div class="pocket-row"><label>隧道模式</label>
+      <select id="pk-mode">
+        <option value="quick" ${st.tunnelConfig.mode === 'quick' ? 'selected' : ''}>快速隧道（自动，URL 每次重启换新）</option>
+        <option value="token" ${st.tunnelConfig.mode === 'token' ? 'selected' : ''}>自定义 token（Cloudflare 远程管理）</option>
+        <option value="named" ${st.tunnelConfig.mode === 'named' ? 'selected' : ''}>自定义 named（本机凭据）</option>
+        <option value="external" ${st.tunnelConfig.mode === 'external' ? 'selected' : ''}>外部隧道（自己已建好）</option>
+      </select>
+    </div>
+    <div id="pk-custom" class="pocket-custom${st.tunnelConfig.mode === 'quick' ? ' hidden' : ''}">
+      <div class="pocket-row"><label>Token</label><input id="pk-token" value="${esc(st.tunnelConfig.token || '')}" placeholder="mode=token 时填写"></div>
+      <div class="pocket-row"><label>名称</label><input id="pk-name" value="${esc(st.tunnelConfig.name || '')}" placeholder="mode=named 时填写"></div>
+      <div class="pocket-row"><label>公网地址</label><input id="pk-url" value="${esc(st.tunnelConfig.publicUrl || '')}" placeholder="https://your.tunnel.example.com"></div>
+      <div class="pocket-row"><label>cloudflared</label><input id="pk-bin" value="${esc(st.tunnelConfig.bin || '')}" placeholder="自定义二进制路径（可选）"></div>
+      <button class="btn-ghost pk-btn" data-act="cfg-save">保存隧道配置</button>
+    </div>
+    <div class="pocket-row"><label>状态</label><b>${stateLabel}</b>
+      ${st.tunnelRunning
+        ? '<button class="btn-ghost pk-btn danger" data-act="tunnel-stop">关闭公网</button>'
+        : '<button class="btn-ghost pk-btn" data-act="tunnel-start">开启公网访问</button>'}
+    </div>
+    <div id="pk-disc-wrap" class="hidden"><label class="pk-disc"><input type="checkbox" id="pk-disc"> 我已知情：公网会把能执行代码的 DeepFusion 暴露到互联网，请用强 PIN、用完即关</label></div>
+    <div class="pocket-pin">公网 PIN：<b>${esc(st.accessToken)}</b>${st.publicPinCustom ? '（已自定义，不自动换）' : '（每次开启自动换新）'}
+      <button class="btn-ghost pk-btn" data-act="pin-custom" data-which="public">自定义</button>
+    </div>
+    ${st.tunnelUrl ? '<div class="pocket-qr"><img src="' + st.tunnelQr + '" alt="Public QR"><div class="pocket-url">' + esc(st.tunnelUrl) + '</div><div class="pocket-hint">任何网络扫码打开（需输入公网 PIN）</div></div>' : '<div class="pocket-hint">公网隧道未开启</div>'}
+  `;
+  wirePocketDynamic(overlay, st);
+}
+
+function wirePocketActions(overlay) {
+  overlay.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    const act = btn.dataset.act;
+    if (act === 'lan-refresh') { await api('/api/pocket/lan/pin/refresh', { method: 'POST' }); refreshPocketModal(overlay); }
+    else if (act === 'pin-custom') {
+      const which = btn.dataset.which;
+      const v = prompt('设置 ' + (which === 'public' ? '公网' : '局域网') + ' 密码（8 位数字）：');
+      if (v && /^\d{8}$/.test(v)) { await api('/api/pocket/pin/custom', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ which, value: v }) }); refreshPocketModal(overlay); }
+      else if (v) alert('密码必须是 8 位数字');
+    }
+    else if (act === 'tunnel-start') {
+      const disc = overlay.querySelector('#pk-disc');
+      if (!disc || !disc.checked) { alert('请先勾选安全免责声明'); return; }
+      await api('/api/pocket/tunnel/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disclaimer: true }) });
+      refreshPocketModal(overlay);
+    }
+    else if (act === 'tunnel-stop') { await api('/api/pocket/tunnel/stop', { method: 'POST' }); refreshPocketModal(overlay); }
+    else if (act === 'cfg-save') {
+      const mode = overlay.querySelector('#pk-mode')?.value || 'quick';
+      const body = { mode, token: ov('#pk-token'), name: ov('#pk-name'), publicUrl: ov('#pk-url'), bin: ov('#pk-bin') };
+      const r = await api('/api/pocket/tunnel/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!r.ok) alert(r.error || '保存失败'); else refreshPocketModal(overlay);
+    }
+  });
+  function ov(id) { return overlay.querySelector(id)?.value || ''; }
+}
+
+function wirePocketDynamic(overlay, st) {
+  const mode = overlay.querySelector('#pk-mode');
+  if (mode && !mode.dataset.wired) {
+    mode.dataset.wired = '1';
+    mode.addEventListener('change', () => {
+      const custom = overlay.querySelector('#pk-custom');
+      if (custom) custom.classList.toggle('hidden', mode.value === 'quick');
+      const disc = overlay.querySelector('#pk-disc-wrap');
+      if (disc) disc.classList.remove('hidden');
+    });
+  }
+  const lanIp = overlay.querySelector('#pk-lan-ip');
+  if (lanIp && !lanIp.dataset.wired) {
+    lanIp.dataset.wired = '1';
+    lanIp.addEventListener('change', async () => {
+      await api('/api/pocket/lan/ip', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ip: lanIp.value }) });
+      refreshPocketModal(overlay);
+    });
+  }
+  const lanAuth = overlay.querySelector('#pk-lan-auth');
+  if (lanAuth && !lanAuth.dataset.wired) {
+    lanAuth.dataset.wired = '1';
+    lanAuth.addEventListener('click', async () => {
+      const on = lanAuth.dataset.on !== '1';
+      await api('/api/pocket/lan/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on }) });
+      refreshPocketModal(overlay);
+    });
+  }
+  const discWrap = overlay.querySelector('#pk-disc-wrap');
+  if (discWrap && st.tunnelRunning) discWrap.classList.add('hidden');
+}
