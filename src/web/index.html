@@ -3,104 +3,126 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DeepFusion · 深融</title>
+<title>DeepFusion 深融</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="topbar">
-  <div class="brand">
-    <h1 class="brand-title">DeepFusion <span class="brand-sub">深融</span></h1>
-    <p class="tagline">DSH 编排 × Reasonix 引擎 · 融合 Agent</p>
-  </div>
-  <nav class="tabs">
-    <button class="tab-btn" data-tab="tasks">📋 任务管理</button>
-    <button class="tab-btn active" data-tab="chat">💬 Chat</button>
-    <button class="tab-btn" data-tab="settings">⚙️ 设置</button>
-  </nav>
-  <div class="engine-pill" id="engine-pill">
-    <span class="dot" id="engine-dot"></span>
-    <span id="engine-text">检测引擎中…</span>
-  </div>
-</header>
+<div id="app" class="app">
 
-<div id="error-banner" class="error-banner hidden" role="alert"></div>
-
-<main class="container">
-  <!-- Tab: 任务管理 -->
-  <section id="tab-tasks" class="tab-panel hidden">
-    <div class="card">
-      <h2 class="card-title">📊 任务统计</h2>
-      <div id="stats" class="stats"></div>
-    </div>
-    <div class="card">
-      <h2 class="card-title">📤 派发任务（交给 Reasonix 引擎）</h2>
-      <form id="dispatch-form">
-        <input type="text" id="task-title" placeholder="任务标题" required>
-        <textarea id="task-context" rows="3" placeholder="任务说明（上下文）"></textarea>
-        <input type="text" id="task-verify" placeholder="验收要求（可选）">
-        <div class="form-actions">
-          <button type="submit" class="btn primary">入队</button>
-          <button type="button" id="btn-dispatch-all" class="btn accent">⚡ 一键派发全部 pending</button>
-        </div>
-      </form>
-    </div>
-    <div class="card">
-      <h2 class="card-title">📋 任务队列</h2>
-      <div id="task-list" class="task-list">加载中…</div>
-    </div>
-    <div class="card">
-      <h2 class="card-title">💰 成本台账</h2>
-      <div id="ledger" class="ledger">加载中…</div>
-    </div>
-  </section>
-
-  <!-- Tab: Chat -->
-  <section id="tab-chat" class="tab-panel">
-    <div class="chat-layout">
-      <div class="chat-side">
-        <h2 class="card-title">💬 对话</h2>
-        <button id="btn-new-conv" class="btn primary full">+ 新建对话</button>
-        <div id="conv-list" class="conv-list">加载中…</div>
+  <!-- ══ 左侧边栏：项目化会话管理 ══ -->
+  <aside id="sidebar-left" class="sidebar-left">
+    <div class="sl-head">
+      <button id="btn-new-conv" class="btn-primary">＋ 新建对话</button>
+      <div class="sl-search">
+        <input id="conv-search" type="search" placeholder="搜索会话…">
+        <button id="btn-conv-sort" class="btn-ghost" title="排序">⇅</button>
       </div>
-      <div class="chat-main">
-        <div id="chat-window" class="chat-window">
-          <div class="chat-empty">开始新对话，或从左侧选择历史对话。</div>
-        </div>
-        <div class="chat-input-row">
-          <select id="chat-model" class="chat-model">
-            <option value="deepseek-chat">deepseek-chat</option>
-            <option value="deepseek-pro">deepseek-pro</option>
+    </div>
+    <div id="conv-groups" class="conv-groups"></div>
+    <div class="sl-foot">
+      <div id="account-mini" class="account-mini">余额 --</div>
+      <button id="btn-settings" class="btn-ghost">⚙ 设置</button>
+    </div>
+  </aside>
+
+  <!-- ══ 中间主区：多标签核心交互区 ══ -->
+  <main id="main" class="main">
+    <div class="main-tabs">
+      <button class="tab-btn active" data-tab="chat">💬 对话</button>
+      <button class="tab-btn" data-tab="trace">🕸 思考轨迹</button>
+      <button class="tab-btn" data-tab="context">🧠 上下文</button>
+      <div class="tab-spacer"></div>
+      <div id="agents-badge" class="agents-badge hidden" title="激活子代理">⚙ 0 激活</div>
+    </div>
+
+    <!-- 对话页 -->
+    <div id="panel-chat" class="tab-panel active">
+      <div id="chat-window" class="chat-window"></div>
+      <!-- ══ 底部控制栏 ══ -->
+      <div id="bottom-bar" class="bottom-bar">
+        <div class="bb-row1">
+          <div class="bb-tools">
+            <button class="tool-btn" id="btn-upload" title="上传文件">📎</button>
+            <button class="tool-btn" id="btn-term" title="终端调用">🖥</button>
+            <button class="tool-btn" id="btn-web" title="网页访问">🌐</button>
+            <button class="tool-btn" id="btn-repo" title="代码仓库">📦</button>
+          </div>
+          <div class="bb-modes" id="mode-bar">
+            <button class="mode-btn active" data-mode="normal" title="常规">常规</button>
+            <button class="mode-btn" data-mode="ask" title="工具执行前需确认">询问</button>
+            <button class="mode-btn" data-mode="auto" title="自主调用工具">自动</button>
+            <button class="mode-btn" data-mode="yolo" title="无限制自主执行">Yolo</button>
+            <button class="mode-btn" data-mode="standard" title="标准">标准</button>
+            <button class="mode-btn" data-mode="deliver" title="交付模式">交付</button>
+          </div>
+          <select id="chat-model" class="chat-model" title="模型切换">
+            <option value="tokenrhythm/deepseek-v4-flash">deepseek-v4-flash</option>
+            <option value="tokenrhythm/deepseek-v4-pro">deepseek-v4-pro</option>
+            <option value="tokenrhythm/glm-5.2">glm-5.2</option>
+            <option value="tokenrhythm/kimi-k2.5">kimi-k2.5</option>
+            <option value="tokenrhythm/qwen3.7-max">qwen3.7-max</option>
           </select>
-          <textarea id="chat-input" rows="2" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
-          <button id="btn-chat-send" class="btn primary">发送</button>
         </div>
-        <div id="chat-cost" class="chat-cost"></div>
+        <div class="bb-input-row">
+          <textarea id="chat-input" placeholder="输入消息… Enter 发送 / Shift+Enter 换行" rows="3"></textarea>
+          <div class="bb-actions">
+            <button id="btn-chat-stop" class="btn-ghost hidden" title="停止生成">⏹ 停止</button>
+            <button id="btn-chat-send" class="btn-primary">发送 ↑</button>
+          </div>
+        </div>
+        <div class="bb-meta">
+          <span id="token-est">0 tok</span>
+          <span class="dot-sep">·</span>
+          <span id="chat-cost"></span>
+        </div>
       </div>
     </div>
-  </section>
 
-  <!-- Tab: 设置 -->
-  <section id="tab-settings" class="tab-panel hidden">
-    <div class="card">
-      <h2 class="card-title">⚙️ Reasonix 引擎</h2>
-      <div id="engine-info" class="engine-info">加载中…</div>
+    <!-- 思考轨迹页 -->
+    <div id="panel-trace" class="tab-panel">
+      <div id="trace-window" class="trace-window"><div class="panel-empty">思考轨迹将在此展示任务拆解与子代理全链路</div></div>
     </div>
-    <div class="card">
-      <h2 class="card-title">⚙️ 偏好设置</h2>
-      <div class="settings-row">
-        <label>默认对话模型</label>
-        <select id="set-model">
-          <option value="deepseek-chat">deepseek-chat</option>
-          <option value="deepseek-pro">deepseek-pro</option>
-        </select>
+
+    <!-- 上下文页 -->
+    <div id="panel-context" class="tab-panel">
+      <div id="context-window" class="context-window"><div class="panel-empty">系统提示词 / 历史对话 / 工具调用记录管理</div></div>
+    </div>
+  </main>
+
+  <!-- ══ 右侧边栏：实时运行监控 ══ -->
+  <aside id="sidebar-right" class="sidebar-right">
+    <div class="sr-section">
+      <h3>上下文窗口</h3>
+      <div class="ctx-ring-wrap">
+        <svg id="ctx-ring" viewBox="0 0 100 100">
+          <circle class="ring-bg" cx="50" cy="50" r="42"></circle>
+          <circle id="ring-fg" class="ring-fg" cx="50" cy="50" r="42"></circle>
+        </svg>
+        <div id="ctx-num" class="ctx-num">0%</div>
       </div>
-      <p class="dim">端口 43210 · DeepFusion v0.1.0 · MIT</p>
+      <div id="ctx-detail" class="ctx-detail">原始 -- · 压缩 -- · 压缩率 --</div>
     </div>
-  </section>
-</main>
-
-<footer class="foot">DeepFusion v0.1.0 · MIT · 由 DSH × Reasonix 融合构建</footer>
+    <div class="sr-section">
+      <h3>会话指标</h3>
+      <div class="metrics">
+        <div class="metric"><span>平均耗时</span><b id="m-hit">--</b></div>
+        <div class="metric"><span>会话费用</span><b id="m-cost">--</b></div>
+        <div class="metric"><span>运行时长</span><b id="m-run">--</b></div>
+        <div class="metric"><span>请求数</span><b id="m-req">--</b></div>
+        <div class="metric"><span>缓存命中率</span><b id="m-cache">--</b></div>
+      </div>
+    </div>
+    <div class="sr-section">
+      <h3>用量分析</h3>
+      <div id="breakdown" class="breakdown"></div>
+    </div>
+    <div class="sr-section">
+      <h3>子代理</h3>
+      <div id="subagents" class="subagents"><div class="empty">0 个激活</div></div>
+    </div>
+  </aside>
+</div>
 <script src="app.js"></script>
 </body>
 </html>

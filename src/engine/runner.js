@@ -1,15 +1,14 @@
 /**
- * runner.js — Reasonix 执行引擎（run --events-jsonl 模式）
+ * runner.js — Reasonix 执行引擎
  *
- * 主执行器：直接调用 reasonix run 子命令
- *   reasonix run --events-jsonl --trajectory <tmp> [--model X] <任务文本>
+ * 两种运行模式：
+ *   1) events-jsonl（默认）：reasonix run --events-jsonl --trajectory <tmp> <任务>
+ *      - stdout 脱敏事件（不含正文），正文从 trajectory 落盘提取
+ *   2) stream-json（SSE 流式）：reasonix run --output-format stream-json <任务>
+ *      - stdout 带正文的流式 JSON（text 增量 / message / result / usage），
+ *        适合前端实时打字机渲染
  *
- * - stdout 输出脱敏 JSONL 事件（turn_started/turn_phase/stream_attempt/text/message/usage/run_done），
- *   逐行解析并回调 onEvent；usage/session_id/duration_ms/ok 从中提取。
- * - 脱敏事件不含正文，因此同时用 --trajectory 落盘完整事件流（含 text/message 正文），
- *   供最终文本提取（message 事件的 content / text 事件正文）。
- * - stderr 只收诊断，记录到 stderrBuf。
- * - Windows 下 .cmd/.bat 及 PATH 裸命令一律经 cmd.exe /c 包装（参考 reasonix.js start()）。
+ * usage 解析兼容原始键名（input_tokens/cache_read_input_tokens/...）与解析后键名。
  */
 import { spawn, spawnSync } from 'node:child_process';
 import readline from 'node:readline';
@@ -17,7 +16,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { readFileSync, rmSync } from 'node:fs';
 
-/** 解析 usage（兼容原始键名 input_tokens/cache_miss_tokens/cache_read_input_tokens 与解析后键名），幂等 */
+/** 解析 usage（兼容原始键名与解析后键名），幂等 */
 function parseUsage(u = {}) {
   return {
     inputTokens: Number(u.input_tokens ?? u.inputTokens) || 0,
@@ -37,7 +36,7 @@ export function cacheHitRate(usage = {}) {
 }
 
 /**
- * 用 reasonix run --events-jsonl 执行一个任务。
+ * 用 reasonix 执行一个任务。
  * @param {object} opts
  * @param {string} opts.prompt       任务文本（位置参数传给 reasonix）
  * @param {string} [opts.cwd]        工作目录（默认 process.cwd()）
@@ -45,6 +44,7 @@ export function cacheHitRate(usage = {}) {
  * @param {string} [opts.bin]        reasonix 可执行文件，默认 'reasonix'
  * @param {number}  [opts.timeoutMs] 超时毫秒，默认 300000
  * @param {Function} [opts.onEvent]  每解析一个 stdout 事件回调 onEvent(event)
+ * @param {boolean}  [opts.streamJson] true 用 --output-format stream-json（正文流式）
  * @returns {Promise<{ok, text, usage, sessionId, durationMs, events, error, stderr}>}
  */
 export async function runReasonixTask({
@@ -53,7 +53,8 @@ export async function runReasonixTask({
   model,
   bin = 'reasonix',
   timeoutMs = 300000,
-  onEvent = null
+  onEvent = null,
+  streamJson = false
 } = {}) {
   const events = [];
   const textParts = [];
@@ -61,6 +62,8 @@ export async function runReasonixTask({
   let sessionId = null;
   let durationMs = null;
   let runDoneOk = null;
+  let resultOk = null;   // stream-json 的 result 事件 is_error
+  let resultText = null; // stream-json 的 result 事件 result
   let stderrBuf = '';
   let error = null;
   const emptyUsage = () => parseUsage();
@@ -70,7 +73,9 @@ export async function runReasonixTask({
   }
 
   const trajFile = path.join(tmpdir(), 'reasonix-traj-' + process.pid + '-' + Date.now() + '.jsonl');
-  const args = ['run', '--events-jsonl', '--trajectory', trajFile];
+  const args = streamJson
+    ? ['run', '--output-format', 'stream-json']
+    : ['run', '--events-jsonl', '--trajectory', trajFile];
   if (model) args.push('--model', model);
   args.push(String(prompt));
 
@@ -84,13 +89,20 @@ export async function runReasonixTask({
     launchArgs = args;
   }
 
-  /** 从（完整/脱敏）事件对象里提取正文片段：优先 text 流式片段；message 事件仅在没有 text 片段时兜底 */
   let sawTextEvent = false;
   function collectText(ev) {
     const kind = ev?.kind || ev?.type || '';
     if (kind === 'text') {
       const t = ev?.text ?? ev?.delta ?? ev?.content;
       if (typeof t === 'string' && t) { textParts.push(t); sawTextEvent = true; }
+    } else if (kind === 'result' || kind === 'reply') {
+      const t = ev?.result ?? ev?.text ?? ev?.content;
+      if (typeof t === 'string' && t) { resultText = t; textParts.push(t); sawTextEvent = true; }
+      if (typeof ev?.is_error === 'boolean') resultOk = !ev.is_error;
+      else if (typeof ev?.subtype === 'string') resultOk = ev.subtype !== 'error';
+      if (ev?.session_id) sessionId = ev.session_id;
+      if (typeof ev?.duration_ms === 'number') durationMs = ev.duration_ms;
+      if (ev?.usage) usage = parseUsage(ev.usage);
     } else if (kind === 'message' && !sawTextEvent) {
       const t = ev?.content ?? ev?.text ?? ev?.message?.content;
       const s = typeof t === 'string' ? t : Array.isArray(t) ? t.map(b => b?.text || '').join('') : '';
@@ -108,7 +120,7 @@ export async function runReasonixTask({
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
-      try { rmSync(trajFile, { force: true }); } catch {}
+      try { if (!streamJson) rmSync(trajFile, { force: true }); } catch {}
       resolve(value);
     };
 
@@ -136,7 +148,6 @@ export async function runReasonixTask({
       }
     }, timeoutMs);
 
-    // stdout = 脱敏 JSONL 事件流
     const rl = readline.createInterface({ input: proc.stdout });
     rl.on('line', (line) => {
       const t = line.trim();
@@ -145,14 +156,14 @@ export async function runReasonixTask({
       try {
         ev = JSON.parse(t);
       } catch {
-        return; // 非 JSON 行忽略
+        return;
       }
       events.push(ev);
       if (typeof onEvent === 'function') {
         try { onEvent(ev); } catch {}
       }
       const kind = ev?.kind || ev?.type || '';
-      collectText(ev); // 万一脱敏事件带正文也收
+      collectText(ev);
       if (kind === 'usage') {
         usage = ev?.usage ? parseUsage(ev.usage) : parseUsage(ev);
       }
@@ -167,7 +178,6 @@ export async function runReasonixTask({
       if (typeof ev?.duration_ms === 'number' && durationMs === null) durationMs = ev.duration_ms;
     });
 
-    // stderr = 诊断
     proc.stderr.on('data', (d) => {
       stderrBuf += d.toString();
       if (stderrBuf.length > 8000) stderrBuf = stderrBuf.slice(-8000);
@@ -191,7 +201,23 @@ export async function runReasonixTask({
         finish({ ok: false, text: textParts.join(''), usage: parseUsage(usage), sessionId, durationMs, events, error: 'reasonix 进程退出码非零: ' + code, stderr: stderrBuf.slice(-2000) });
         return;
       }
-      // 完整事件流（trajectory）补正文：text 事件拼接 / message 事件 content
+
+      if (streamJson) {
+        // 再扫一遍 events 补 usage/session/duration/result（时序兜底）
+        for (const ev of events) collectText(ev);
+        const ok = resultOk === null ? (resultText !== null || textParts.length > 0) : resultOk;
+        finish({
+          ok,
+          text: resultText !== null ? resultText : textParts.join(''),
+          usage: parseUsage(usage),
+          sessionId, durationMs, events,
+          error: ok ? null : 'reasonix 未报告成功完成',
+          stderr: stderrBuf.slice(-2000)
+        });
+        return;
+      }
+
+      // events-jsonl：trajectory 补正文
       try {
         for (const line of readFileSync(trajFile, 'utf8').split(/\r?\n/)) {
           if (!line.trim()) continue;
@@ -201,7 +227,6 @@ export async function runReasonixTask({
           } catch {}
         }
       } catch {}
-      // 从已收集的 events 数组取最后一条 usage/run_done（可能因事件循环时序未及时更新上方变量）
       for (const ev of events) {
         const kind = ev?.kind || ev?.type || '';
         if (kind === 'usage') {

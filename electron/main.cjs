@@ -43,6 +43,20 @@ function saveWindowState(win) {
 // ── 启动内置 server ──
 function startServer() {
   return new Promise((resolve, reject) => {
+    // 先检查端口是否已有健康 server（防止残留进程卡住）
+    const quickCheck = http.request({ hostname: HOST, port: PORT, path: '/api/health', method: 'GET', timeout: 1000 }, (res) => {
+      let body = '';
+      res.on('data', (d) => body += d);
+      res.on('end', () => {
+        if (res.statusCode === 200) { console.log('[server] 复用已有 server'); resolve(); return; }
+        spawnServer();
+      });
+    });
+    quickCheck.on('error', () => spawnServer());
+    quickCheck.on('timeout', () => { quickCheck.destroy(); spawnServer(); });
+    quickCheck.end();
+
+    function spawnServer() {
     const serverPath = path.join(__dirname, '..', 'src', 'server.js');
     if (!fs.existsSync(serverPath)) {
       reject(new Error('server.js 不存在: ' + serverPath));
@@ -74,6 +88,7 @@ function startServer() {
       req.end();
     };
     setTimeout(poll, 500);
+  }
   });
 }
 
@@ -95,7 +110,8 @@ function createWindow() {
     show: false
   });
 
-  mainWindow.loadURL('http://' + HOST + ':' + PORT + '/');
+  // 先显示本地品牌页（秒开），server 就绪后由 whenReady 跳转工作台
+  mainWindow.loadFile(path.join(__dirname, 'splash.html'));
   mainWindow.once('ready-to-show', () => { mainWindow.show(); });
   mainWindow.on('close', () => saveWindowState(mainWindow));
   mainWindow.on('closed', () => { mainWindow = null; });
@@ -142,15 +158,18 @@ if (!gotTheLock) {
 }
 
 app.whenReady().then(async () => {
+  // 先出窗口（显示 splash 品牌页），秒开
+  createWindow();
+  createTray();
+  // 后台启动 server，就绪后跳转工作台
   try {
     console.log('启动内置 server…');
     await startServer();
     console.log('server 就绪');
-    createWindow();
-    createTray();
+    if (mainWindow) mainWindow.loadURL('http://' + HOST + ':' + PORT + '/');
   } catch (e) {
     console.error('启动失败:', e.message);
-    app.quit();
+    // 不退出，splash 页面显示错误信息
   }
 });
 

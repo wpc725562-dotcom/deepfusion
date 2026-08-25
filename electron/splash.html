@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  html, body { margin: 0; height: 100%; background: #090a0c; color: #f4f5f7;
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    display: flex; align-items: center; justify-content: center; }
+  .wrap { text-align: center; }
+  .logo { font-size: 42px; font-weight: 700; letter-spacing: 1px; }
+  .logo span { color: #d97757; }
+  .sub { margin-top: 10px; color: #858b96; font-size: 14px; font-family: ui-monospace, Consolas, monospace; }
+  .bar { margin: 24px auto 0; width: 160px; height: 3px; background: #222631; border-radius: 2px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 40%; background: linear-gradient(90deg, #d97757, #e58a6b);
+    border-radius: 2px; animation: slide 1.1s ease-in-out infinite; }
+  @keyframes slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo">Deep<span>Fusion</span> 深融</div>
+    <div class="sub">DSH × Reasonix 融合 Agent · 正在启动工作台…</div>
+    <div class="bar"><i></i></div>
+  </div>
+</body>
+</html>
