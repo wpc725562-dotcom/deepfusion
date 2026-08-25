@@ -86,6 +86,8 @@ let currentConvId = null;
 let chatBusy = false;
 let currentMode = 'normal';
 let stopController = null;   // AbortController for SSE
+let pocketOverlay = null;     // 📱 手机访问模态框引用
+const POCKET_POLL_ID = 'pocket:refresh';
 
 function $(id) { return document.getElementById(id); }
 
@@ -876,8 +878,6 @@ openConversation = async function(cid) {
 };
 
 /* ========== 📱 手机访问面板（dshtunnel） ========== */
-const POCKET_POLL_ID = 'pocket:refresh';
-let pocketOverlay = null;
 
 $('btn-phone')?.addEventListener('click', openPhoneModal);
 
@@ -939,10 +939,16 @@ function renderPocket(overlay, st) {
 }
 
 /** @param {PocketStatus} st @returns {string} */
+/** @param {PocketStatus} st @returns {string} */
+function lanHost(st) {
+  if (!st.lanUrl) return '';
+  try { return new URL(st.lanUrl).host; } catch { return st.lanUrl.replace(/^https?:\/\//, ''); }
+}
+
 function lanCardHtml(st) {
   const ipOptions = (st.lanCandidates || []).map(ip =>
     '<option value="' + esc(ip) + '"' + (ip === st.lanIpOverride ? ' selected' : '') + '>' + esc(ip) + '</option>'
-  ).join('') + '<option value="">自动（推荐）</option>';
+  ).join('') + '<option value=""' + (!st.lanIpOverride ? ' selected' : '') + '>自动（推荐 · ' + esc(lanHost(st)) + '）</option>';
   const lanHint = st.lanAuthEnabled ? '手机连同一 WiFi 扫码打开（需输入局域网 PIN）' : '手机连同一 WiFi 扫码打开（免密直连）';
   return '' +
     '<div class="pocket-row"><label>局域网地址</label><select id="pk-lan-ip">' + ipOptions + '</select></div>' +
