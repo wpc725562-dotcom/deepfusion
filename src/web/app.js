@@ -1,7 +1,86 @@
 /**
  * DeepFusion 深融 — 四栏融合工作台前端
  * 依赖：原生 DOM API + fetch + ReadableStream
+ *
+ * 类型契约：JSDoc typedef（编辑器 IntelliSense 直接可用，无需构建）。
  */
+
+/**
+ * @typedef {Object} PocketStatus
+ * @property {boolean} proxyRunning
+ * @property {number|null} proxyPort
+ * @property {string|null} lanUrl
+ * @property {string|null} lanQr
+ * @property {string[]} lanCandidates
+ * @property {string} lanIpOverride
+ * @property {boolean} tunnelRunning
+ * @property {string|null} tunnelUrl
+ * @property {string|null} tunnelQr
+ * @property {{phase: string, detail: string, startedAt: number|null, mode: string}} tunnelState
+ * @property {{mode: string, token: string, name: string, publicUrl: string, bin: string}} tunnelConfig
+ * @property {number} dshPort
+ * @property {number} port
+ * @property {string} accessToken
+ * @property {string} lanToken
+ * @property {boolean} lanAuthEnabled
+ * @property {boolean} publicPinCustom
+ * @property {boolean} lanPinCustom
+ */
+
+/* ========== 统一轮询调度器 ==========
+ * 背景问题：多代理(2.5s)/编排(3s)/手机访问(5s)各自 setTimeout/setInterval，
+ * 多个面板同时打开时请求会挤在同一个 tick（请求簇）。
+ * 方案：单一 100ms 调度环 + 每任务独立相位错峰；标签页不可见时暂停轮询。
+ */
+const PollScheduler = (() => {
+  const tasks = new Map();
+  let timer = null;
+  let bound = false;
+
+  function bindVisibility() {
+    if (bound) return;
+    bound = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stop();
+      else { start(); tick(); }
+    });
+  }
+  function start() {
+    if (!timer) timer = setInterval(tick, 100);
+    bindVisibility();
+  }
+  function stop() {
+    if (timer) { clearInterval(timer); timer = null; }
+  }
+  function tick() {
+    const now = Date.now();
+    for (const t of tasks.values()) {
+      if (t.running || now - t.lastRun < t.interval) continue;
+      t.lastRun = now;
+      t.running = true;
+      Promise.resolve().then(t.fn).catch(() => {}).finally(() => { t.running = false; });
+    }
+  }
+  return {
+    /** @param {string} id @param {() => void|Promise<void>} fn @param {number} interval @param {number} [phase] */
+    register(id, fn, interval, phase = 0) {
+      if (tasks.has(id)) return () => tasks.delete(id);
+      tasks.set(id, {
+        id, fn, interval,
+        lastRun: Date.now() - interval + phase,
+        running: false
+      });
+      start();
+      return () => tasks.delete(id);
+    },
+    unregister(id) { tasks.delete(id); },
+    runNow(id) {
+      const t = tasks.get(id);
+      if (t) { t.lastRun = 0; tick(); }
+    }
+  };
+})();
+
 const API = '';
 let currentConvId = null;
 let chatBusy = false;
@@ -12,6 +91,13 @@ function $(id) { return document.getElementById(id); }
 
 /* ========== 工具函数 ========== */
 
+/**
+ * 通用 API 请求（默认解析为 JSON）
+ * @template T
+ * @param {string} path
+ * @param {RequestInit} [opts]
+ * @returns {Promise<T>}
+ */
 async function api(path, opts) {
   const r = await fetch(API + path, opts);
   return r.json();
@@ -86,6 +172,7 @@ function pollGoal(goalId, card, objective) {
       // 完成则停止轮询 + 追加汇总
       if (g.status === 'done' || g.status === 'failed') {
         goalPollers.delete(goalId);
+        PollScheduler.unregister('goal:' + goalId);
         const done = (g.steps || []).filter(s => s.status === 'done');
         if (done.length) {
           const summary = done.map(s => '【' + s.title + '】\n' + (s.result || '')).join('\n\n');
@@ -96,10 +183,11 @@ function pollGoal(goalId, card, objective) {
         return;
       }
       loadSubagents();
-      setTimeout(update, 2500);
-    } catch { setTimeout(update, 3000); }
+    } catch {} // 失败静默，调度器下个周期自动重试
   };
   update();
+  // 2500ms 间隔；按注册顺序错峰，避免多个轮询请求挤在同一时刻
+  PollScheduler.register('goal:' + goalId, update, 2500, (goalPollers.size % 10) * 100);
 }
 
 /* ========== 子代理面板实时同步 ========== */
@@ -509,32 +597,32 @@ async function loadAccount() {
 
 /* ========== 设置弹窗 ========== */
 
-$('btn-settings')?.addEventListener('click', () => {
+$('btn-settings')?.addEventListener('click', openSettingsModal);
+
+function openSettingsModal() {
+  if (document.getElementById('settings-modal')) return; // 幂等
   const overlay = document.createElement('div');
   overlay.className = 'modal-mask';
-  overlay.innerHTML = `
-    <div class="modal">
-      <h2>⚙ 设置</h2>
-      <div class="row"><label>默认模型</label><select id="dlg-model">
-        <option value="deepseek-chat">tokenrhythm/deepseek-v4-flash</option>
-        <option value="deepseek-pro">tokenrhythm/deepseek-v4-pro</option>
-        <option value="deepseek-reasoner">tokenrhythm/qwen3.7-max</option>
-      </select></div>
-      <div class="row"><label>默认模式</label><select id="dlg-mode">
-        <option value="normal">常规</option>
-        <option value="ask">询问</option>
-        <option value="auto">自动</option>
-        <option value="yolo">Yolo</option>
-        <option value="standard">标准</option>
-        <option value="deliver">交付</option>
-      </select></div>
-      <div class="modal-actions">
-        <button class="btn-ghost" id="dlg-close">关闭</button>
-        <button class="btn-primary" id="dlg-save">保存</button>
-      </div>
-    </div>`;
+  overlay.id = 'settings-modal';
+  overlay.innerHTML = '<div class="modal">' +
+    '<h2>⚙ 设置</h2>' +
+    '<div class="row"><label>默认模型</label><select id="dlg-model">' +
+      '<option value="deepseek-chat">tokenrhythm/deepseek-v4-flash</option>' +
+      '<option value="deepseek-pro">tokenrhythm/deepseek-v4-pro</option>' +
+      '<option value="deepseek-reasoner">tokenrhythm/qwen3.7-max</option>' +
+    '</select></div>' +
+    '<div class="row"><label>默认模式</label><select id="dlg-mode">' +
+      '<option value="normal">常规</option><option value="ask">询问</option><option value="auto">自动</option>' +
+      '<option value="yolo">Yolo</option><option value="standard">标准</option><option value="deliver">交付</option>' +
+    '</select></div>' +
+    '<div class="modal-actions">' +
+      '<button class="btn-ghost" id="dlg-close">关闭</button>' +
+      '<button class="btn-primary" id="dlg-save">保存</button>' +
+    '</div>' +
+  '</div>';
   document.body.appendChild(overlay);
-  overlay.querySelector('#dlg-close').onclick = () => overlay.remove();
+  const close = () => closeSettingsModal(overlay);
+  overlay.querySelector('#dlg-close').onclick = close;
   overlay.querySelector('#dlg-save').onclick = () => {
     const m = overlay.querySelector('#dlg-model').value;
     const md = overlay.querySelector('#dlg-mode').value;
@@ -543,12 +631,18 @@ $('btn-settings')?.addEventListener('click', () => {
     $('chat-model').value = m;
     document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === md));
     currentMode = md;
-    overlay.remove();
+    close();
   };
   overlay.querySelector('#dlg-model').value = $('chat-model')?.value || 'tokenrhythm/deepseek-v4-flash';
   overlay.querySelector('#dlg-mode').value = currentMode;
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-});
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  if (location.hash !== '#settings') history.pushState(null, '', '#settings');
+}
+
+function closeSettingsModal(overlay) {
+  if (overlay && overlay.parentNode) overlay.remove();
+  if (location.hash === '#settings') history.replaceState(null, '', location.pathname + location.search);
+}
 
 /* ========== 初始化 ========== */
 
@@ -569,6 +663,18 @@ if (savedMode) {
 
 // 对话默认页面
 $('chat-window').innerHTML = '<div class="chat-empty"><div class="ce-big">💬</div>开始新对话。输入消息并发送。</div>';
+
+/* ========== 模态框 hash 路由（刷新后可恢复面板） ========== */
+function openModalByHash() {
+  if (location.hash === '#phone') openPhoneModal();
+  else if (location.hash === '#settings') openSettingsModal();
+}
+window.addEventListener('hashchange', () => {
+  if (location.hash === '#phone') openPhoneModal();
+  else if (location.hash === '#settings') openSettingsModal();
+  else if (!location.hash) { closePhoneModal(); closeSettingsModal(); }
+});
+openModalByHash();
 
 /* ========== 多编排模式 ========== */
 
@@ -631,6 +737,7 @@ function pollOrchestration(orchId, card, modeLabel) {
       }
       if (o.status === 'done' || o.status === 'failed' || o.status === 'blocked') {
         orchPollers.delete(orchId);
+        PollScheduler.unregister('orch:' + orchId);
         if (o.result && o.status === 'done') {
           card.querySelector('.msg-bubble').insertAdjacentHTML('beforeend', '<div class="text-part" style="margin-top:8px;border-top:1px dashed var(--border-soft);padding-top:8px">' + esc(o.result).slice(0, 3000) + '</div>');
         }
@@ -638,10 +745,11 @@ function pollOrchestration(orchId, card, modeLabel) {
         renderTracePanel();
         return;
       }
-      setTimeout(update, 2500);
-    } catch { setTimeout(update, 3000); }
+    } catch {} // 失败静默，调度器下个周期自动重试
   };
   update();
+  // 3000ms 间隔；与 goal 轮询错峰 100ms
+  PollScheduler.register('orch:' + orchId, update, 3000, (orchPollers.size % 10) * 100);
 }
 
 /* ========== 增强 trace 面板：展示编排记录 ========== */
@@ -768,101 +876,147 @@ openConversation = async function(cid) {
 };
 
 /* ========== 📱 手机访问面板（dshtunnel） ========== */
-let pocketTimer = null;
+const POCKET_POLL_ID = 'pocket:refresh';
+let pocketOverlay = null;
+
 $('btn-phone')?.addEventListener('click', openPhoneModal);
 
 function openPhoneModal() {
+  if (pocketOverlay) return; // 幂等：已打开则忽略
   const overlay = document.createElement('div');
   overlay.className = 'modal-mask';
-  overlay.innerHTML = `
-    <div class="modal modal-wide">
-      <h2>📱 手机访问</h2>
-      <p class="pocket-desc">手机扫码打开电脑上的 DeepFusion，实时同步。局域网可免密直连；公网始终需要 8 位访问密码。</p>
-      <div class="pocket-grid">
-        <div class="pocket-card" id="pk-lan">
-          <h3>📶 局域网（同一 WiFi）</h3>
-          <div id="pk-lan-body">加载中…</div>
-        </div>
-        <div class="pocket-card" id="pk-pub">
-          <h3>🌐 公网（人在外面）</h3>
-          <div id="pk-pub-body">加载中…</div>
-        </div>
-      </div>
-      <div class="modal-actions">
-        <button class="btn-ghost" id="pocket-close">关闭</button>
-      </div>
-    </div>`;
+  overlay.id = 'phone-modal';
+  overlay.innerHTML = '<div class="modal modal-wide">' +
+    '<h2>📱 手机访问</h2>' +
+    '<p class="pocket-desc">手机扫码打开电脑上的 DeepFusion，实时同步。局域网可免密直连；公网始终需要 8 位访问密码。</p>' +
+    '<div class="pocket-grid">' +
+      '<div class="pocket-card" id="pk-lan"><h3>📶 局域网（同一 WiFi）</h3><div id="pk-lan-body">加载中…</div></div>' +
+      '<div class="pocket-card" id="pk-pub"><h3>🌐 公网（人在外面）</h3><div id="pk-pub-body">加载中…</div></div>' +
+    '</div>' +
+    '<div class="modal-actions"><button class="btn-ghost" id="pocket-close">关闭</button></div>' +
+  '</div>';
   document.body.appendChild(overlay);
+  pocketOverlay = overlay;
   wirePocketActions(overlay);
   refreshPocketModal(overlay);
-  pocketTimer = setInterval(() => refreshPocketModal(overlay), 5000);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) closePhoneModal(overlay); });
-  overlay.querySelector('#pocket-close').onclick = () => closePhoneModal(overlay);
+  // 5000ms 轮询，相位 200ms 与其他轮询错峰；随面板关闭自动注销
+  PollScheduler.register(POCKET_POLL_ID, () => refreshPocketModal(overlay), 5000, 200);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closePhoneModal(); });
+  overlay.querySelector('#pocket-close').onclick = () => closePhoneModal();
+  if (location.hash !== '#phone') history.pushState(null, '', '#phone');
 }
 
-function closePhoneModal(overlay) {
-  if (pocketTimer) { clearInterval(pocketTimer); pocketTimer = null; }
-  overlay.remove();
+function closePhoneModal() {
+  const overlay = pocketOverlay;
+  pocketOverlay = null;
+  PollScheduler.unregister(POCKET_POLL_ID);
+  if (overlay && overlay.parentNode) overlay.remove();
+  if (location.hash === '#phone') history.replaceState(null, '', location.pathname + location.search);
 }
 
+/** @param {HTMLElement} overlay */
 async function refreshPocketModal(overlay) {
   try {
-    const j = await api('/api/pocket/status');
-    if (!j.ok) return;
-    renderPocket(overlay, j);
+    /** @type {PocketStatus} */
+    const st = await api('/api/pocket/status');
+    if (!st.ok) return;
+    renderPocket(overlay, st);
   } catch {}
 }
 
-function renderPocket(overlay, j) {
+/**
+ * 渲染手机访问面板
+ * @param {HTMLElement} overlay
+ * @param {PocketStatus} st
+ */
+function renderPocket(overlay, st) {
   const lanBody = overlay.querySelector('#pk-lan-body');
   const pubBody = overlay.querySelector('#pk-pub-body');
   if (!lanBody || !pubBody) return;
-  const st = j;
-  const stateLabel = st.tunnelState ? (st.tunnelState.phase === 'ready' ? '✅ 已开启' : st.tunnelState.phase === 'idle' ? '⏸ 已关闭' : '⏳ ' + (st.tunnelState.detail || st.tunnelState.phase)) : (st.tunnelRunning ? '✅ 已开启' : '⏸ 已关闭');
-
-  // 局域网
-  lanBody.innerHTML = `
-    <div class="pocket-row"><label>局域网地址</label>
-      <select id="pk-lan-ip">${(st.lanCandidates || []).map(ip => '<option value="' + esc(ip) + '"' + (ip === st.lanIpOverride ? ' selected' : '') + '>' + esc(ip) + '</option>').join('')}<option value="">自动（推荐）</option></select>
-    </div>
-    <div class="pocket-row"><label>访问密码</label>
-      <span class="pk-toggle" id="pk-lan-auth" data-on="${st.lanAuthEnabled ? '1' : '0'}">${st.lanAuthEnabled ? '🔒 开' : '🔓 关'}</span>
-      <button class="btn-ghost pk-btn" data-act="lan-refresh">刷新</button>
-      <button class="btn-ghost pk-btn" data-act="pin-custom" data-which="lan">自定义</button>
-    </div>
-    <div class="pocket-pin">局域网 PIN：<b>${esc(st.lanToken)}</b>${st.lanPinCustom ? '（已自定义，不自动换）' : ''}</div>
-    ${st.lanUrl ? '<div class="pocket-qr"><img src="' + st.lanQr + '" alt="LAN QR"><div class="pocket-url">' + esc(st.lanUrl) + '</div><div class="pocket-hint">手机连同一 WiFi 扫码打开' + (st.lanAuthEnabled ? '（需输入局域网 PIN）' : '（免密直连）') + '</div></div>' : '<div class="pocket-hint">未检测到局域网 IP</div>'}
-  `;
-
-  // 公网
-  pubBody.innerHTML = `
-    <div class="pocket-row"><label>隧道模式</label>
-      <select id="pk-mode">
-        <option value="quick" ${st.tunnelConfig.mode === 'quick' ? 'selected' : ''}>快速隧道（自动，URL 每次重启换新）</option>
-        <option value="token" ${st.tunnelConfig.mode === 'token' ? 'selected' : ''}>自定义 token（Cloudflare 远程管理）</option>
-        <option value="named" ${st.tunnelConfig.mode === 'named' ? 'selected' : ''}>自定义 named（本机凭据）</option>
-        <option value="external" ${st.tunnelConfig.mode === 'external' ? 'selected' : ''}>外部隧道（自己已建好）</option>
-      </select>
-    </div>
-    <div id="pk-custom" class="pocket-custom${st.tunnelConfig.mode === 'quick' ? ' hidden' : ''}">
-      <div class="pocket-row"><label>Token</label><input id="pk-token" value="${esc(st.tunnelConfig.token || '')}" placeholder="mode=token 时填写"></div>
-      <div class="pocket-row"><label>名称</label><input id="pk-name" value="${esc(st.tunnelConfig.name || '')}" placeholder="mode=named 时填写"></div>
-      <div class="pocket-row"><label>公网地址</label><input id="pk-url" value="${esc(st.tunnelConfig.publicUrl || '')}" placeholder="https://your.tunnel.example.com"></div>
-      <div class="pocket-row"><label>cloudflared</label><input id="pk-bin" value="${esc(st.tunnelConfig.bin || '')}" placeholder="自定义二进制路径（可选）"></div>
-      <button class="btn-ghost pk-btn" data-act="cfg-save">保存隧道配置</button>
-    </div>
-    <div class="pocket-row"><label>状态</label><b>${stateLabel}</b>
-      ${st.tunnelRunning
-        ? '<button class="btn-ghost pk-btn danger" data-act="tunnel-stop">关闭公网</button>'
-        : '<button class="btn-ghost pk-btn" data-act="tunnel-start">开启公网访问</button>'}
-    </div>
-    <div id="pk-disc-wrap" class="hidden"><label class="pk-disc"><input type="checkbox" id="pk-disc"> 我已知情：公网会把能执行代码的 DeepFusion 暴露到互联网，请用强 PIN、用完即关</label></div>
-    <div class="pocket-pin">公网 PIN：<b>${esc(st.accessToken)}</b>${st.publicPinCustom ? '（已自定义，不自动换）' : '（每次开启自动换新）'}
-      <button class="btn-ghost pk-btn" data-act="pin-custom" data-which="public">自定义</button>
-    </div>
-    ${st.tunnelUrl ? '<div class="pocket-qr"><img src="' + st.tunnelQr + '" alt="Public QR"><div class="pocket-url">' + esc(st.tunnelUrl) + '</div><div class="pocket-hint">任何网络扫码打开（需输入公网 PIN）</div></div>' : '<div class="pocket-hint">公网隧道未开启</div>'}
-  `;
+  lanBody.innerHTML = lanCardHtml(st);
+  pubBody.innerHTML = pubCardHtml(st);
   wirePocketDynamic(overlay, st);
+}
+
+/** @param {PocketStatus} st @returns {string} */
+function lanCardHtml(st) {
+  const ipOptions = (st.lanCandidates || []).map(ip =>
+    '<option value="' + esc(ip) + '"' + (ip === st.lanIpOverride ? ' selected' : '') + '>' + esc(ip) + '</option>'
+  ).join('') + '<option value="">自动（推荐）</option>';
+  const lanHint = st.lanAuthEnabled ? '手机连同一 WiFi 扫码打开（需输入局域网 PIN）' : '手机连同一 WiFi 扫码打开（免密直连）';
+  return '' +
+    '<div class="pocket-row"><label>局域网地址</label><select id="pk-lan-ip">' + ipOptions + '</select></div>' +
+    '<div class="pocket-row"><label>访问密码</label>' +
+      '<span class="pk-toggle" id="pk-lan-auth" data-on="' + (st.lanAuthEnabled ? '1' : '0') + '">' + (st.lanAuthEnabled ? '🔒 开' : '🔓 关') + '</span>' +
+      '<button class="btn-ghost pk-btn" data-act="lan-refresh">刷新</button>' +
+      '<button class="btn-ghost pk-btn" data-act="pin-custom" data-which="lan">自定义</button>' +
+    '</div>' +
+    pinLine('局域网', st.lanToken, st.lanPinCustom, 'lan') +
+    qrBlock(st.lanUrl, st.lanQr, lanHint, '未检测到局域网 IP');
+}
+
+/**
+ * @param {string} label @param {string} token @param {boolean} custom @param {string} which
+ * @returns {string}
+ */
+function pinLine(label, token, custom, which) {
+  return '<div class="pocket-pin">' + label + ' PIN：<b>' + esc(token) + '</b>' +
+    (custom ? '（已自定义，不自动换）' : '') +
+    '<button class="btn-ghost pk-btn" data-act="pin-custom" data-which="' + which + '">自定义</button></div>';
+}
+
+/**
+ * @param {string|null} url @param {string|null} qr @param {string} hint @param {string} placeholder
+ * @returns {string}
+ */
+function qrBlock(url, qr, hint, placeholder) {
+  if (!url || !qr) return '<div class="pocket-hint">' + placeholder + '</div>';
+  return '<div class="pocket-qr"><img src="' + qr + '" alt="QR"><div class="pocket-url">' + esc(url) + '</div><div class="pocket-hint">' + hint + '</div></div>';
+}
+
+/** @param {PocketStatus} st @returns {string} */
+function pubCardHtml(st) {
+  const cfg = st.tunnelConfig;
+  const stateLabel = tunnelStateLabel(st);
+  const modeOpts = [
+    ['quick', '快速隧道（自动，URL 每次重启换新）'],
+    ['token', '自定义 token（Cloudflare 远程管理）'],
+    ['named', '自定义 named（本机凭据）'],
+    ['external', '外部隧道（自己已建好）']
+  ].map((pair) => {
+    const v = pair[0], label = pair[1];
+    return '<option value="' + v + '"' + (cfg.mode === v ? ' selected' : '') + '>' + label + '</option>';
+  }).join('');
+  const toggle = st.tunnelRunning
+    ? '<button class="btn-ghost pk-btn danger" data-act="tunnel-stop">关闭公网</button>'
+    : '<button class="btn-ghost pk-btn" data-act="tunnel-start">开启公网访问</button>';
+  return '' +
+    '<div class="pocket-row"><label>隧道模式</label><select id="pk-mode">' + modeOpts + '</select></div>' +
+    '<div id="pk-custom" class="pocket-custom' + (cfg.mode === 'quick' ? ' hidden' : '') + '">' +
+      inputRow('pk-token', 'Token', cfg.token, 'mode=token 时填写') +
+      inputRow('pk-name', '名称', cfg.name, 'mode=named 时填写') +
+      inputRow('pk-url', '公网地址', cfg.publicUrl, 'https://your.tunnel.example.com') +
+      inputRow('pk-bin', 'cloudflared', cfg.bin, '自定义二进制路径（可选）') +
+      '<button class="btn-ghost pk-btn" data-act="cfg-save">保存隧道配置</button>' +
+    '</div>' +
+    '<div class="pocket-row"><label>状态</label><b>' + stateLabel + '</b>' + toggle + '</div>' +
+    '<div id="pk-disc-wrap" class="hidden"><label class="pk-disc"><input type="checkbox" id="pk-disc"> 我已知情：公网会把能执行代码的 DeepFusion 暴露到互联网，请用强 PIN、用完即关</label></div>' +
+    pinLine('公网', st.accessToken, st.publicPinCustom, 'public') +
+    qrBlock(st.tunnelUrl, st.tunnelQr, '任何网络扫码打开（需输入公网 PIN）', '公网隧道未开启');
+}
+
+/** @param {string} id @param {string} label @param {string} val @param {string} ph @returns {string} */
+function inputRow(id, label, val, ph) {
+  return '<div class="pocket-row"><label>' + label + '</label><input id="' + id + '" value="' + esc(val || '') + '" placeholder="' + ph + '"></div>';
+}
+
+/** @param {PocketStatus} st @returns {string} */
+function tunnelStateLabel(st) {
+  const s = st.tunnelState;
+  if (!s) return st.tunnelRunning ? '✅ 已开启' : '⏸ 已关闭';
+  if (s.phase === 'ready') return '✅ 已开启';
+  if (s.phase === 'idle') return '⏸ 已关闭';
+  return '⏳ ' + (s.detail || s.phase);
 }
 
 function wirePocketActions(overlay) {
@@ -894,6 +1048,7 @@ function wirePocketActions(overlay) {
   function ov(id) { return overlay.querySelector(id)?.value || ''; }
 }
 
+/** @param {HTMLElement} overlay @param {PocketStatus} st */
 function wirePocketDynamic(overlay, st) {
   const mode = overlay.querySelector('#pk-mode');
   if (mode && !mode.dataset.wired) {
