@@ -158,6 +158,8 @@ if (!gotTheLock) {
 }
 
 app.whenReady().then(async () => {
+  // 隐藏系统原生菜单栏（自绘顶栏替代）
+  try { Menu.setApplicationMenu(null); } catch {}
   // 先出窗口（显示 splash 品牌页），秒开
   createWindow();
   createTray();

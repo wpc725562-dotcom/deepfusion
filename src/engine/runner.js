@@ -68,6 +68,40 @@ export async function runReasonixTask({
   let error = null;
   const emptyUsage = () => parseUsage();
 
+/**
+ * Windows：把 npm .cmd shim 解析为 node + 实际 js 入口，
+ * 直接 spawn node.exe，绕过 cmd.exe /c 包装（后台进程不会管道阻塞）
+ */
+function resolveReasonixLaunch(bin) {
+  if (process.platform !== 'win32') return { bin, args: [] };
+  const dirs = (process.env.PATH || '').split(';').filter(Boolean);
+  const find = (name) => {
+    for (const d of dirs) {
+      const p = path.join(d, name);
+      if (existsSync(p)) return p;
+    }
+    return null;
+  };
+  const shim = find(bin + '.cmd') || find(bin) || null;
+  if (!shim) return { bin, args: [] };
+  if (/\\.exe$/i.test(shim)) return { bin: shim, args: [] };
+  if (/\\.cmd$/i.test(shim)) {
+    // npm shim 模式：<dp0>\node_modules\<pkg>\bin\<name>.js
+    const m = /node_modules\\([^\\]+)\\bin\\([^\\]+)$/.exec(shim);
+    if (m) {
+      const js = path.join(path.dirname(shim), 'node_modules', m[1], 'bin', m[2].replace(/\.cmd$/i, '') + '.js');
+      if (existsSync(js)) return { bin: 'node', args: [js] };
+    }
+    // 通用 .cmd 解析：提取 js 入口
+    try {
+      const content = readFileSync(shim, 'utf8');
+      const jm = content.match(/\s"([^"]*node_modules[^"]+\.js)"\s+/);
+      if (jm && existsSync(jm[1])) return { bin: 'node', args: [jm[1]] };
+    } catch {}
+  }
+  return { bin, args: [] };
+}
+
   if (!prompt) {
     return { ok: false, text: '', usage: emptyUsage(), sessionId: null, durationMs: null, events, error: 'prompt 不能为空', stderr: '' };
   }
@@ -77,6 +111,8 @@ export async function runReasonixTask({
     ? ['run', '--output-format', 'stream-json']
     : ['run', '--events-jsonl', '--trajectory', trajFile];
   if (model) args.push('--model', model);
+  args.push('--permission-mode', 'auto');
+  args.push('--effort', 'disabled');
   args.push(String(prompt));
 
   // Windows：.cmd/.bat 或裸命令（PATH 中的 reasonix/npx）用 cmd.exe /c 包装

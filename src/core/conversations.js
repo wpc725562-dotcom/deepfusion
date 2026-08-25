@@ -12,6 +12,30 @@ function convPath(id) { return path.join(CONV_DIR, id.endsWith('.json') ? id : i
 
 function now() { return new Date().toISOString(); }
 
+/** 清洗乱码文本：U+FFFD 替换符 / 控制字符 → 兜底显示 */
+export function sanitizeText(s, fallback = '（内容不可读）') {
+  if (!s) return s;
+  let t = String(s);
+  // 统计替换符占比
+  const bad = (t.match(/\uFFFD/g) || []).length;
+  const ratio = t.length ? bad / t.length : 0;
+  if (ratio > 0.2) return fallback;               // 大量替换符 → 兜底
+  t = t.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');  // 控制字符
+  return t;
+}
+
+/** 清洗对话对象（标题 + 消息内容），兼容旧乱码数据 */
+export function sanitizeConversation(c) {
+  if (!c) return c;
+  c.title = sanitizeText(c.title, '历史对话');
+  if (Array.isArray(c.messages)) {
+    for (const m of c.messages) {
+      if (m && typeof m.content === 'string') m.content = sanitizeText(m.content, '（消息内容不可读）');
+    }
+  }
+  return c;
+}
+
 /** 列出对话（按更新时间倒序） */
 export function listConversations() {
   ensureDir();
@@ -19,8 +43,9 @@ export function listConversations() {
   for (const f of readdirSync(CONV_DIR)) {
     if (!f.endsWith('.json')) continue;
     try {
-      const c = JSON.parse(readFileSync(path.join(CONV_DIR, f), 'utf8'));
-      list.push({ id: c.id, title: c.title, createdAt: c.createdAt, updatedAt: c.updatedAt, messageCount: c.messages.length });
+      let c = JSON.parse(readFileSync(path.join(CONV_DIR, f), 'utf8'));
+      c = sanitizeConversation(c);
+      list.push({ id: c.id, title: c.title, createdAt: c.createdAt, updatedAt: c.updatedAt, messageCount: (c.messages || []).length });
     } catch {}
   }
   return list.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
@@ -30,7 +55,7 @@ export function listConversations() {
 export function getConversation(id) {
   const p = convPath(id);
   if (!existsSync(p)) return null;
-  try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; }
+  try { return sanitizeConversation(JSON.parse(readFileSync(p, 'utf8'))); } catch { return null; }
 }
 
 /** 新建对话 */
@@ -50,6 +75,7 @@ export function createConversation(title) {
 
 /** 追加消息并保存 */
 export function appendMessage(conv, role, content, usage = null) {
+  content = sanitizeText(content, '');
   conv.messages.push({ role, content, usage: usage || null, at: now() });
   if (role === 'user' && conv.title === '新对话' && content) {
     conv.title = content.slice(0, 30) + (content.length > 30 ? '…' : '');

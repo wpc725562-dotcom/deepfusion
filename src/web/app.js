@@ -23,6 +23,111 @@ function esc(s) {
 
 function formatTime(d) { return (d || '').slice(5, 16).replace('T', ' '); }
 
+/* ========== 多代理执行（总指挥 → 子代理池） ========== */
+
+$('btn-goal')?.addEventListener('click', startMultiAgent);
+
+async function startMultiAgent() {
+  const input = $('chat-input');
+  const objective = input.value.trim();
+  if (!objective || chatBusy) return;
+  const w = $('chat-window');
+  const empty = w.querySelector('.chat-empty');
+  if (empty) empty.remove();
+  // 用户消息
+  w.insertAdjacentHTML('beforeend', '<div class="msg user"><div class="msg-bubble">🧩 多代理执行：' + esc(objective) + '</div></div>');
+  // 目标卡片
+  const card = document.createElement('div');
+  card.className = 'msg assistant';
+  card.innerHTML = '<div class="msg-bubble"><div class="goal-card" id="goal-card"><div class="goal-head">🧩 多代理编排中…</div><div class="goal-progress">总指挥正在拆解目标…</div><div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div></div></div>';
+  w.appendChild(card);
+  w.scrollTop = w.scrollHeight;
+  input.value = '';
+  updateTokenEst(0);
+
+  try {
+    const j = await api('/api/goals', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ objective, deep: false, concurrency: 2 })
+    });
+    if (!j.ok) throw new Error(j.error || '创建失败');
+    pollGoal(j.goal.id, card, objective);
+  } catch (e) {
+    card.querySelector('.goal-head').textContent = '❌ 编排失败: ' + e.message;
+  }
+}
+
+const goalPollers = new Map();
+function pollGoal(goalId, card, objective) {
+  if (goalPollers.has(goalId)) return;
+  goalPollers.set(goalId, true);
+  const update = async () => {
+    try {
+      const j = await api('/api/goals/' + goalId);
+      if (!j.ok) return;
+      const g = j.goal;
+      const head = card.querySelector('.goal-head');
+      const prog = card.querySelector('.goal-progress');
+      const fill = card.querySelector('.progress-fill');
+      if (head) {
+        if (g.status === 'done') head.textContent = '✅ 目标完成 · ' + (g.summary || (g.doneCount + '/' + g.totalCount));
+        else if (g.status === 'failed') head.textContent = '❌ 目标失败: ' + (g.error || '');
+        else if (g.phase === 'decomposing') head.textContent = '🧩 总指挥正在拆解目标…';
+        else head.textContent = '🧩 执行中 · 子代理 ' + g.doneCount + '/' + g.totalCount;
+      }
+      if (prog) {
+        const detail = (g.steps || []).map(s => (s.status === 'done' ? '✅' : s.status === 'running' ? '⏳' : s.status === 'failed' ? '❌' : '⬜') + ' ' + esc(s.title)).join('　');
+        prog.textContent = detail || '总指挥正在拆解目标…';
+      }
+      if (fill) {
+        const pct = g.totalCount ? Math.round(g.doneCount / g.totalCount * 100) : 0;
+        fill.style.width = pct + '%';
+      }
+      // 完成则停止轮询 + 追加汇总
+      if (g.status === 'done' || g.status === 'failed') {
+        goalPollers.delete(goalId);
+        const done = (g.steps || []).filter(s => s.status === 'done');
+        if (done.length) {
+          const summary = done.map(s => '【' + s.title + '】\n' + (s.result || '')).join('\n\n');
+          card.querySelector('.msg-bubble').insertAdjacentHTML('beforeend', '<div class="text-part" style="margin-top:8px;border-top:1px dashed var(--border-soft);padding-top:8px">' + esc(summary).slice(0, 3000) + '</div>');
+        }
+        loadSubagents();
+        refreshRightPanel();
+        return;
+      }
+      loadSubagents();
+      setTimeout(update, 2500);
+    } catch { setTimeout(update, 3000); }
+  };
+  update();
+}
+
+/* ========== 子代理面板实时同步 ========== */
+
+async function loadSubagents() {
+  const el = $('subagents');
+  const badge = $('agents-badge');
+  if (!el) return;
+  try {
+    const j = await api('/api/goals');
+    const active = (j.goals || []).filter(g => g.status === 'running');
+    const total = active.reduce((n, g) => n + (g.doneCount || 0), 0);
+    if (badge) {
+      badge.classList.toggle('hidden', !active.length);
+      badge.textContent = '⚙ ' + (active.length ? active.length + ' 目标 · ' + total + ' 子代理' : '0 激活');
+    }
+    if (!active.length) {
+      el.innerHTML = '<div class="empty">0 个激活</div>';
+      return;
+    }
+    el.innerHTML = active.map(g => {
+      const running = (g.steps || []).filter(s => s.status === 'running').length;
+      const label = g.phase === 'decomposing' ? '拆解中' : running + ' 运行 · ' + g.doneCount + '/' + g.totalCount;
+      return '<div class="subagent-item"><span class="sa-dot"></span><span class="sa-name">' + esc(g.objective).slice(0, 16) + '</span><span class="sa-status">' + label + '</span></div>';
+    }).join('');
+  } catch {}
+}
+
 /* ========== Tab 切换 ========== */
 
 document.querySelectorAll('.tab-btn').forEach(btn => {

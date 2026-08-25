@@ -37,6 +37,7 @@ import { overview, dispatchToReasonix, dispatchAllPending, engineConfig } from '
 import { createTask, applyAction, getTask, listTasks } from './core/queue.js';
 import { listConversations, getConversation, createConversation, appendMessage, buildContextPrompt } from './core/conversations.js';
 import { runReasonixTask } from './engine/runner.js';
+import { createGoal, getGoal, listGoals } from './core/goals.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(__dirname, 'web');
@@ -248,6 +249,14 @@ async function handleStreamChat(req, res, body) {
 
   if (r.ok) appendMessage(c, 'assistant', r.text || '（空回复）', r.usage || null);
   else appendMessage(c, 'assistant', '（调用失败：' + (r.error || '未知错误') + '）');
+  // 对话费用计入台账（右侧面板累计）
+  appendLedger({
+    taskId: c.id, title: '[chat] ' + c.title,
+    usage: r.usage || null,
+    durationMs: r.durationMs || null,
+    sessionId: r.sessionId || null,
+    at: new Date().toISOString()
+  });
   res.end();
 }
 
@@ -316,6 +325,11 @@ const server = http.createServer(async (req, res) => {
         return ok(res, { ok: false, error: r.error, conversation: c });
       }
       appendMessage(c, 'assistant', r.text || '（空回复）', r.usage || null);
+      appendLedger({
+        taskId: c.id, title: '[chat] ' + c.title,
+        usage: r.usage || null, durationMs: r.durationMs || null,
+        sessionId: r.sessionId || null, at: new Date().toISOString()
+      });
       return ok(res, { ok: true, conversation: c, reply: r.text, usage: r.usage, durationMs: r.durationMs });
     }
 
@@ -333,6 +347,24 @@ const server = http.createServer(async (req, res) => {
       if (!c) return fail(res, 404, '对话不存在');
       try { rmSync(path.join(process.cwd(), 'data', 'conversations', cm[1] + '.json')); } catch {}
       return ok(res, { ok: true });
+    }
+
+    // 多代理目标
+    if (method === 'GET' && p === '/api/goals') return ok(res, { ok: true, goals: listGoals() });
+
+    let gm = p.match(/^\/api\/goals\/([^/]+)$/);
+    if (method === 'GET' && gm) {
+      const g = getGoal(gm[1]);
+      if (!g) return fail(res, 404, '目标不存在');
+      return ok(res, { ok: true, goal: g });
+    }
+
+    if (method === 'POST' && p === '/api/goals') {
+      const body = await readBody(req);
+      if (body.__parseError) return fail(res, 400, 'body 不是合法 JSON');
+      if (!body.objective || !String(body.objective).trim()) return fail(res, 400, '缺少 objective');
+      const r = await createGoal(String(body.objective).trim(), { deep: !!body.deep, concurrency: Number(body.concurrency) || 2 });
+      return ok(res, { ok: true, goal: r });
     }
 
     // 创建任务

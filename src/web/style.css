@@ -21,8 +21,8 @@
   --danger: #ef4444;
   --warn: #eab308;
   --info: #3b82f6;
-  --font: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
-  --font-mono: "Cascadia Code", Consolas, "Courier New", monospace;
+  --font: -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --font-mono: "Cascadia Code", Consolas, "JetBrains Mono", "Courier New", "等线", monospace;
   --chat-user-bg: color-mix(in srgb, var(--accent) 16%, var(--bg-elev-2));
   --chat-user-border: color-mix(in srgb, var(--accent) 28%, var(--border-soft));
   --radius: 8px;
@@ -54,9 +54,10 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 .app {
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr var(--sidebar-rw);
-  grid-template-rows: 100vh;
+  grid-template-rows: 38px 1fr;
   height: 100vh;
 }
+.sidebar-left, .sidebar-right, .main { height: calc(100vh - 38px); min-height: 0; }
 .sidebar-left, .sidebar-right, .main { height: 100vh; min-height: 0; }
 
 /* ---------- 按钮 ---------- */
@@ -74,6 +75,23 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   padding: 6px 9px; font-size: 12.5px; transition: all .15s;
 }
 .btn-ghost:hover { border-color: var(--accent); color: var(--text); }
+
+/* ============================================================
+   自定义顶栏（隐藏系统菜单栏后的替换）
+   ============================================================ */
+.topbar {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 10px;
+  height: 38px; padding: 0 14px;
+  background: var(--bg-soft); border-bottom: 1px solid var(--border-soft);
+  flex-shrink: 0; user-select: none;
+}
+.topbar .tb-logo { font-weight: 700; font-size: 13px; letter-spacing: .5px; }
+.topbar .tb-logo span { color: var(--accent); }
+.topbar .tb-path { font-family: var(--font-mono); font-size: 11px; color: var(--dim); margin-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar .tb-spacer { flex: 1; }
+.topbar .tb-status { font-size: 11px; color: var(--shell-accent); }
+.topbar .tb-status.off { color: var(--dim); }
 
 /* ============================================================
    左侧边栏 — 会话管理
@@ -129,7 +147,8 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   padding: 8px 14px; font-size: 13px; border-bottom: 2px solid transparent;
   transition: all .15s; border-radius: 0;
 }
-.tab-btn:hover { color: var(--text); }
+.tab-btn:hover { color: var(--text); background: var(--bg-elev); }
+.tab-btn { margin-right: 6px; }
 .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 .tab-spacer { flex: 1; }
 .agents-badge {
@@ -216,8 +235,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 .mode-btn {
   background: transparent; border: 1px solid var(--border-soft);
   color: var(--text-soft); border-radius: 14px;
-  padding: 4px 12px; font-size: 12px; white-space: nowrap; transition: all .15s;
+  min-width: 52px; height: 28px; padding: 0 12px;
+  font-size: 12px; white-space: nowrap; transition: all .15s;
+  display: inline-flex; align-items: center; justify-content: center;
 }
+.mode-btn:hover { color: var(--text); border-color: var(--border); transform: translateY(-1px); }
 .mode-btn:hover { color: var(--text); border-color: var(--border); }
 .mode-btn.active { background: var(--accent); color: #140a06; border-color: var(--accent); font-weight: 600; }
 .chat-model { font-size: 12px; }
@@ -235,7 +257,12 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   display: flex; flex-direction: column; overflow-y: auto;
   background: var(--bg-soft); border-left: 1px solid var(--border-soft); padding: 12px 12px 20px;
 }
-.sr-section { margin-bottom: 18px; }
+.sr-section { margin-bottom: 14px; }
+.sr-card {
+  background: var(--bg-elev); border: 1px solid var(--border-soft);
+  border-radius: var(--radius); padding: 12px 12px 10px;
+  margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
 .sr-section h3 {
   font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
   color: var(--dim); margin-bottom: 8px; border-bottom: 1px solid var(--border-soft); padding-bottom: 5px;

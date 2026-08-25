@@ -10,6 +10,14 @@
 <body>
 <div id="app" class="app">
 
+  <!-- ══ 自定义顶栏（替代系统菜单栏） ══ -->
+  <div class="topbar" id="topbar">
+    <span class="tb-logo">Deep<span>Fusion</span> 深融</span>
+    <span class="tb-path" id="tb-path">@deepfusion · 43210</span>
+    <div class="tb-spacer"></div>
+    <span class="tb-status" id="tb-status">● 引擎就绪</span>
+  </div>
+
   <!-- ══ 左侧边栏：项目化会话管理 ══ -->
   <aside id="sidebar-left" class="sidebar-left">
     <div class="sl-head">
@@ -47,6 +55,7 @@
             <button class="tool-btn" id="btn-term" title="终端调用">🖥</button>
             <button class="tool-btn" id="btn-web" title="网页访问">🌐</button>
             <button class="tool-btn" id="btn-repo" title="代码仓库">📦</button>
+            <button class="tool-btn" id="btn-goal" title="多代理执行（总指挥拆解 → 子代理池）">🧩</button>
           </div>
           <div class="bb-modes" id="mode-bar">
             <button class="mode-btn active" data-mode="normal" title="常规">常规</button>
