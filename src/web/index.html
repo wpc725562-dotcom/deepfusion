@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepFusion · 深融</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <h1 class="brand-title">DeepFusion <span class="brand-sub">深融</span></h1>
+    <p class="tagline">DSH 编排 × Reasonix 引擎 · 融合 Agent</p>
+  </div>
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="tasks">📋 任务管理</button>
+    <button class="tab-btn" data-tab="chat">💬 Chat</button>
+    <button class="tab-btn" data-tab="settings">⚙️ 设置</button>
+  </nav>
+  <div class="engine-pill" id="engine-pill">
+    <span class="dot" id="engine-dot"></span>
+    <span id="engine-text">检测引擎中…</span>
+  </div>
+</header>
+
+<div id="error-banner" class="error-banner hidden" role="alert"></div>
+
+<main class="container">
+  <!-- Tab: 任务管理 -->
+  <section id="tab-tasks" class="tab-panel">
+    <div class="card">
+      <h2 class="card-title">📊 任务统计</h2>
+      <div id="stats" class="stats"></div>
+    </div>
+    <div class="card">
+      <h2 class="card-title">📤 派发任务（交给 Reasonix 引擎）</h2>
+      <form id="dispatch-form">
+        <input type="text" id="task-title" placeholder="任务标题" required>
+        <textarea id="task-context" rows="3" placeholder="任务说明（上下文）"></textarea>
+        <input type="text" id="task-verify" placeholder="验收要求（可选）">
+        <div class="form-actions">
+          <button type="submit" class="btn primary">入队</button>
+          <button type="button" id="btn-dispatch-all" class="btn accent">⚡ 一键派发全部 pending</button>
+        </div>
+      </form>
+    </div>
+    <div class="card">
+      <h2 class="card-title">📋 任务队列</h2>
+      <div id="task-list" class="task-list">加载中…</div>
+    </div>
+    <div class="card">
+      <h2 class="card-title">💰 成本台账</h2>
+      <div id="ledger" class="ledger">加载中…</div>
+    </div>
+  </section>
+
+  <!-- Tab: Chat -->
+  <section id="tab-chat" class="tab-panel hidden">
+    <div class="chat-layout">
+      <div class="chat-side">
+        <h2 class="card-title">💬 对话</h2>
+        <button id="btn-new-conv" class="btn primary full">+ 新建对话</button>
+        <div id="conv-list" class="conv-list">加载中…</div>
+      </div>
+      <div class="chat-main">
+        <div id="chat-window" class="chat-window">
+          <div class="chat-empty">开始新对话，或从左侧选择历史对话。</div>
+        </div>
+        <div class="chat-input-row">
+          <select id="chat-model" class="chat-model">
+            <option value="deepseek-chat">deepseek-chat</option>
+            <option value="deepseek-pro">deepseek-pro</option>
+          </select>
+          <textarea id="chat-input" rows="2" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+          <button id="btn-chat-send" class="btn primary">发送</button>
+        </div>
+        <div id="chat-cost" class="chat-cost"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tab: 设置 -->
+  <section id="tab-settings" class="tab-panel hidden">
+    <div class="card">
+      <h2 class="card-title">⚙️ Reasonix 引擎</h2>
+      <div id="engine-info" class="engine-info">加载中…</div>
+    </div>
+    <div class="card">
+      <h2 class="card-title">⚙️ 偏好设置</h2>
+      <div class="settings-row">
+        <label>默认对话模型</label>
+        <select id="set-model">
+          <option value="deepseek-chat">deepseek-chat</option>
+          <option value="deepseek-pro">deepseek-pro</option>
+        </select>
+      </div>
+      <p class="dim">端口 43210 · DeepFusion v0.1.0 · MIT</p>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">DeepFusion v0.1.0 · MIT · 由 DSH × Reasonix 融合构建</footer>
+<script src="app.js"></script>
+</body>
+</html>

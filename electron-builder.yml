@@ -1,0 +1,21 @@
+appId: com.deepfusion.app
+productName: DeepFusion
+directories:
+  output: dist
+files:
+  - electron/**/*
+  - src/**/*
+  - package.json
+  - README.md
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  icon: electron/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: DeepFusion 深融

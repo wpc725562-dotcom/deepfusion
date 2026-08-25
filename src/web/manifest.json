@@ -1,0 +1,10 @@
+{
+  "name": "DeepFusion 深融",
+  "short_name": "DeepFusion",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0e14",
+  "theme_color": "#0b0e14",
+  "description": "DSH × Reasonix 融合 Agent 引擎",
+  "icons": []
+}

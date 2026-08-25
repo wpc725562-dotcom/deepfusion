@@ -1,0 +1,37 @@
+# cordis.patch.example.yml — DeepFusion DSH 插件挂载示例
+#
+# 将本文件的内容合并到目标 profile 的 cordis.patch.yml 中（如
+# $DSH_HOME/profiles/web/cordis.patch.yml），即可把 DeepFusion 工作台
+# 入口与 CLI 工具注入 DSH。
+#
+# DSH 的 patch 层以 - insert: 条目向 Composition 中注入 row。
+# 参考：https://github.com/deepseek-ai/dsh
+
+# 1. 注入 DeepFusion 工作台链接（DSH Web 侧边栏 / 工具入口）
+- insert:
+    - id: plugin-deepfusion-workbench
+      name: '@deepseek-ai/dsh-tool-panel'
+      config:
+        label: 'DeepFusion'
+        url: 'http://127.0.0.1:43210'
+        icon: 'assignment'
+        description: 'DeepFusion 工作台 — 任务管理 / 成本台账 / 引擎监控'
+
+# 2. 注入 DeepFusion CLI 启动入口（DSH 会话的 shell 中可调用 deepfusion 命令）
+- insert:
+    - id: tool-deepfusion-cli
+      name: '@deepseek-ai/dsh-tool-bash'
+      config:
+        env:
+          PATH: '{{ env.PATH }}:{{ env.HOME }}/.npm-global/bin'
+        # 如果 deepfusion 已全局安装，Profile 的 shell 可直接用 deepfusion 命令
+        # 如果未安装，可用 npx deepfusion 代替
+
+# 3. 可选：注入 DeepFusion 健康检查面板（Web 仪表盘 Gadget）
+- insert:
+    - id: plugin-deepfusion-health
+      name: '@deepseek-ai/dsh-tool-iframe'
+      config:
+        label: 'DeepFusion 状态'
+        url: 'http://127.0.0.1:43210/api/overview'
+        height: 400

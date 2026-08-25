@@ -1,0 +1,69 @@
+{
+  "name": "deepfusion",
+  "version": "0.1.0",
+  "description": "DeepFusion 深融 —— DSH × Reasonix 融合 Agent 引擎：DSH 式编排（任务队列/多Agent/Web工作台） + Reasonix 式执行（ACP 桥接 + 前缀缓存优化）",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "bin": {
+    "deepfusion": "src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js web",
+    "web": "node src/server.js",
+    "test": "node src/test-acp.js",
+    "desktop": "electron .",
+    "desktop:dev": "electron . --dev",
+    "build:desktop": "electron-builder --win",
+    "build:desktop:portable": "electron-builder --win portable"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "app-builder-bin": "^4.0.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "electron-packager": "^17.1.2"
+  },
+  "build": {
+    "appId": "com.deepfusion.app",
+    "productName": "DeepFusion",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "src/**/*",
+      "package.json",
+      "README.md"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "electron/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "DeepFusion 深融"
+    }
+  },
+  "allowScripts": {
+    "electron@33.4.11": true
+  },
+  "author": "DeepFusion Contributors"
+}
