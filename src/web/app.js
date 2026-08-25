@@ -282,8 +282,10 @@ async function loadConversations() {
   try {
     const j = await api('/api/conversations');
     const convs = j.conversations || [];
+    const sc = $('session-count');
+    if (sc) sc.textContent = convs.length + ' 条';
     if (!convs.length) {
-      el.innerHTML = '<div class="group"><div class="group-head" style="cursor:default">global <span class="g-count">0</span></div><div style="padding:6px;color:var(--dim)">暂无对话</div></div>';
+      el.innerHTML = '<div class="conv-item" style="cursor:default"><span class="conv-title">暂无对话</span></div>';
       return;
     }
     const search = ($('conv-search')?.value || '').toLowerCase();
@@ -585,13 +587,11 @@ async function refreshRightPanel() {
 function updateContextRing(d) {
   const pct = d.pct || 0;
   const num = $('ctx-num');
-  if (num) num.textContent = pct + '%';
-  const fg = $('ring-fg');
+  if (num) num.textContent = Math.round(pct) + '%';
+  const fg = $('ctx-fill');
   if (fg) {
-    const circ = 2 * Math.PI * 42;
-    const offset = circ * (1 - Math.min(100, pct) / 100);
-    fg.style.strokeDashoffset = offset;
-    fg.className = 'ring-fg' + (pct > 80 ? ' danger' : pct > 60 ? ' warn' : '');
+    fg.style.width = Math.min(100, Math.max(0, pct)) + '%';
+    fg.className = 'ctx-bar__fill' + (pct > 80 ? ' danger' : pct > 60 ? ' warn' : '');
   }
   const detail = $('ctx-detail');
   if (detail) detail.textContent = '原始 ' + (d.rawTokens || 0) + ' · 压缩 ' + (d.compressedTokens || 0) + ' · 压缩率 ' + (d.ratio || 0);

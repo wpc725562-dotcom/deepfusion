@@ -10,28 +10,43 @@
 <body>
 <div id="app" class="app">
 
-  <!-- ══ 自定义顶栏（替代系统菜单栏） ══ -->
-  <div class="topbar" id="topbar">
-    <span class="tb-logo">Deep<span>Fusion</span> 深融</span>
-    <span class="tb-path" id="tb-path">@deepfusion · 43210</span>
-    <div class="tb-spacer"></div>
-    <span class="tb-status" id="tb-status">● 引擎就绪</span>
-  </div>
-
-  <!-- ══ 左侧边栏：项目化会话管理 ══ -->
+  <!-- ══ 左侧边栏：Reasonix 结构（品牌 → 导航 → 会话 → 监控） ══ -->
   <aside id="sidebar-left" class="sidebar-left">
-    <div class="sl-head">
-      <button id="btn-new-conv" class="btn-primary">＋ 新建对话</button>
-      <div class="sl-search">
-        <input id="conv-search" type="search" placeholder="搜索会话…">
-        <button id="btn-conv-sort" class="btn-ghost" title="排序">⇅</button>
-      </div>
+    <div class="sidebar__brand">
+      <span class="brand-wordmark">Deep<span>Fusion</span> 深融</span>
+    </div>
+    <nav class="sidebar__nav">
+      <button class="sidebar__item sidebar__item--accent" id="btn-new-conv" title="新建对话">＋ 新建对话</button>
+      <button class="sidebar__item" id="btn-goal" title="多代理执行（总指挥拆解 → 子代理池）">🧩 多代理</button>
+      <button class="sidebar__item" id="btn-orch" title="启动编排">⚡ 编排</button>
+      <div class="sidebar__sep"></div>
+      <button class="sidebar__item" id="btn-settings" title="设置">⚙ 设置</button>
+      <button class="sidebar__item" id="btn-phone" title="手机访问">📱 手机访问</button>
+    </nav>
+    <div class="sidebar__label-row">
+      <span class="sidebar__label">会话</span>
+      <span id="session-count" class="session-item__meta"></span>
+    </div>
+    <div class="session-search">
+      <input id="conv-search" class="session-search__input" type="search" placeholder="搜索会话…">
+      <button id="btn-conv-sort" class="btn-ghost" title="排序">⇅</button>
     </div>
     <div id="conv-groups" class="conv-groups"></div>
-    <div class="sl-foot">
+    <div class="sidebar__section">
+      <div class="sidebar__ctx">
+        <div class="ctx-bar"><div class="ctx-bar__fill" id="ctx-fill" style="width:0%"></div></div>
+        <div class="ctx-label"><span id="ctx-num">0%</span><span id="ctx-detail">原始 -- · 压缩 --</span></div>
+      </div>
+      <div class="status-metrics">
+        <div class="sm-item"><span class="sm-val acc" id="m-cost">--</span><span class="sm-label">费用</span></div>
+        <div class="sm-item"><span class="sm-val" id="m-run">--</span><span class="sm-label">时长</span></div>
+        <div class="sm-item"><span class="sm-val" id="m-req">--</span><span class="sm-label">请求</span></div>
+        <div class="sm-item"><span class="sm-val" id="m-cache">--</span><span class="sm-label">缓存</span></div>
+      </div>
+      <div id="breakdown" class="breakdown"></div>
+      <div id="subagents" class="subagents"><div class="empty">0 个激活</div></div>
+      <div class="status" id="sidebar-status">引擎就绪</div>
       <div id="account-mini" class="account-mini">余额 --</div>
-      <button id="btn-settings" class="btn-ghost">⚙ 设置</button>
-      <button id="btn-phone" class="btn-ghost">📱 手机访问</button>
     </div>
   </aside>
 
@@ -48,22 +63,20 @@
     <!-- 对话页 -->
     <div id="panel-chat" class="tab-panel active">
       <div id="chat-window" class="chat-window"></div>
-      <!-- ══ 底部控制栏 ══ -->
-      <div id="bottom-bar" class="bottom-bar">
+      <!-- ══ 底部输入栏（Reasonix footer） ══ -->
+      <div id="bottom-bar" class="footer">
         <div class="bb-row1">
           <div class="bb-tools">
             <button class="tool-btn" id="btn-upload" title="上传文件">📎</button>
             <button class="tool-btn" id="btn-term" title="终端调用">🖥</button>
             <button class="tool-btn" id="btn-web" title="网页访问">🌐</button>
             <button class="tool-btn" id="btn-repo" title="代码仓库">📦</button>
-            <button class="tool-btn" id="btn-goal" title="多代理执行（总指挥拆解 → 子代理池）">🧩</button>
             <select id="orch-mode" class="tool-select" title="编排模式">
               <option value="fanout">扇出</option>
               <option value="pipeline">流水线</option>
               <option value="map-reduce">拆分-归约</option>
               <option value="supervisor">评审合成</option>
             </select>
-            <button class="tool-btn" id="btn-orch" title="启动编排">⚡</button>
           </div>
           <div class="bb-modes" id="mode-bar">
             <button class="mode-btn active" data-mode="normal" title="常规">常规</button>
@@ -73,13 +86,6 @@
             <button class="mode-btn" data-mode="standard" title="标准">标准</button>
             <button class="mode-btn" data-mode="deliver" title="交付模式">交付</button>
           </div>
-          <select id="chat-model" class="chat-model" title="模型切换">
-            <option value="tokenrhythm/deepseek-v4-flash">deepseek-v4-flash</option>
-            <option value="tokenrhythm/deepseek-v4-pro">deepseek-v4-pro</option>
-            <option value="tokenrhythm/glm-5.2">glm-5.2</option>
-            <option value="tokenrhythm/kimi-k2.5">kimi-k2.5</option>
-            <option value="tokenrhythm/qwen3.7-max">qwen3.7-max</option>
-          </select>
         </div>
         <div class="bb-input-row">
           <textarea id="chat-input" placeholder="输入消息… Enter 发送 / Shift+Enter 换行" rows="3"></textarea>
@@ -89,6 +95,14 @@
           </div>
         </div>
         <div class="bb-meta">
+          <select id="chat-model" class="chat-model" title="模型切换">
+            <option value="tokenrhythm/deepseek-v4-flash">deepseek-v4-flash</option>
+            <option value="tokenrhythm/deepseek-v4-pro">deepseek-v4-pro</option>
+            <option value="tokenrhythm/glm-5.2">glm-5.2</option>
+            <option value="tokenrhythm/kimi-k2.5">kimi-k2.5</option>
+            <option value="tokenrhythm/qwen3.7-max">qwen3.7-max</option>
+          </select>
+          <span class="dot-sep">·</span>
           <span id="token-est">0 tok</span>
           <span class="dot-sep">·</span>
           <span id="chat-cost"></span>
@@ -106,39 +120,6 @@
       <div id="context-window" class="context-window"><div class="panel-empty">系统提示词 / 历史对话 / 工具调用记录管理</div></div>
     </div>
   </main>
-
-  <!-- ══ 右侧边栏：实时运行监控 ══ -->
-  <aside id="sidebar-right" class="sidebar-right">
-    <div class="sr-section">
-      <h3>上下文窗口</h3>
-      <div class="ctx-ring-wrap">
-        <svg id="ctx-ring" viewBox="0 0 100 100">
-          <circle class="ring-bg" cx="50" cy="50" r="42"></circle>
-          <circle id="ring-fg" class="ring-fg" cx="50" cy="50" r="42"></circle>
-        </svg>
-        <div id="ctx-num" class="ctx-num">0%</div>
-      </div>
-      <div id="ctx-detail" class="ctx-detail">原始 -- · 压缩 -- · 压缩率 --</div>
-    </div>
-    <div class="sr-section">
-      <h3>会话指标</h3>
-      <div class="metrics">
-        <div class="metric"><span>平均耗时</span><b id="m-hit">--</b></div>
-        <div class="metric"><span>会话费用</span><b id="m-cost">--</b></div>
-        <div class="metric"><span>运行时长</span><b id="m-run">--</b></div>
-        <div class="metric"><span>请求数</span><b id="m-req">--</b></div>
-        <div class="metric"><span>缓存命中率</span><b id="m-cache">--</b></div>
-      </div>
-    </div>
-    <div class="sr-section">
-      <h3>用量分析</h3>
-      <div id="breakdown" class="breakdown"></div>
-    </div>
-    <div class="sr-section">
-      <h3>子代理</h3>
-      <div id="subagents" class="subagents"><div class="empty">0 个激活</div></div>
-    </div>
-  </aside>
 </div>
 <script src="app.js"></script>
 </body>

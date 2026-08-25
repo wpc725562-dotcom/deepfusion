@@ -84,16 +84,16 @@ function resolveReasonixLaunch(bin) {
   };
   const shim = find(bin + '.cmd') || find(bin) || null;
   if (!shim) return { bin, args: [] };
-  if (/\\.exe$/i.test(shim)) return { bin: shim, args: [] };
-  if (/\\.cmd$/i.test(shim)) {
+  if (/\.exe$/i.test(shim)) return { bin: shim, args: [] };
+  if (/\.cmd$/i.test(shim)) {
     // npm shim 模式：<dp0>\node_modules\<pkg>\bin\<name>.js
     const m = /node_modules\\([^\\]+)\\bin\\([^\\]+)$/.exec(shim);
     if (m) {
-      const js = path.join(path.dirname(shim), 'node_modules', m[1], 'bin', m[2].replace(/\.cmd$/i, '') + '.js');
+      const js = path.join(path.dirname(shim), 'node_modules', m[1], 'bin', m[2].replace(/.cmd$/i, '') + '.js');
       if (existsSync(js)) return { bin: 'node', args: [js] };
     }
     // npm 全局安装：<dp0>\node_modules\<binName>\bin\<binName>.js
-    const binName = path.basename(shim).replace(/\.cmd$/i, '');
+    const binName = path.basename(shim).replace(/.cmd$/i, '');
     const globalJs = path.join(path.dirname(shim), 'node_modules', binName, 'bin', binName + '.js');
     if (existsSync(globalJs)) return { bin: 'node', args: [globalJs] };
     // 通用 .cmd 解析：提取 js 入口（含 %dp0% 变量）
@@ -124,7 +124,7 @@ function resolveWinLaunch(bin, args) {
     return { bin: 'node', args: [...resolved.args, ...args] };
   }
   // 若直接是 .exe
-  if (/\\.exe$/i.test(resolved.bin)) {
+  if (/\.exe$/i.test(resolved.bin)) {
     return { bin: resolved.bin, args };
   }
   // 兜底：仍用 cmd /c 但走完整路径
