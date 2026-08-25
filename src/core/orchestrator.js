@@ -9,7 +9,8 @@
  */
 import { runReasonixTask, cacheHitRate } from '../engine/runner.js';
 import { listTasks, getTask, applyAction, createTask, taskStats } from './queue.js';
-import { engineStatus, resolveLaunch, loadConfig } from '../engine/manager.js';
+import { engineStatus, resolveLaunch } from '../engine/manager.js';
+import { resolveModel } from './config.js';
 import { runConcurrent } from './dispatcher.js';
 
 /** 引擎执行配置 */
@@ -19,7 +20,7 @@ export function engineConfig() {
   return {
     usable: !!launch,
     launch,
-    model: loadConfig().model || process.env.REASONIX_MODEL || 'deepseek-pro',
+    model: resolveModel(),
     status: st
   };
 }

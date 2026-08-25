@@ -153,6 +153,22 @@ export function loadConfig() {
   return merged;
 }
 
+/**
+ * 解析生效模型（单一来源，避免各处硬编码/键位错乱）
+ * 优先级：显式传入 > 配置链 engine.model（loadConfig 已含环境变量 DEEPFUSION_MODEL/项目/全局 TOML）>
+ *         兜底默认 deepseek-chat
+ * 注：loadConfig() 内部已把 DEEPFUSION_MODEL 覆盖到 engine.model，此处不再重复读 env。
+ *     CLI flag 不在配置链内，若要覆盖请显式传入 explicit 参数。
+ * @param {string} [explicit] 显式指定（如请求体 model / CLI 覆盖）
+ */
+export function resolveModel(explicit) {
+  const cfg = loadConfig();
+  const configured = cfg.engine && cfg.engine.model;
+  return (explicit && String(explicit).trim())
+    || configured
+    || 'deepseek-chat';
+}
+
 function deepMerge(base, over) {
   const out = { ...base };
   for (const [k, v] of Object.entries(over || {})) {

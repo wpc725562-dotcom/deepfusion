@@ -1,8 +1,8 @@
 /** orchestration.js — DSH 式多编排模式引擎（DAG 调度近似）*/
 import { runReasonixTask } from '../engine/runner.js';
+import { resolveModel } from './config.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-const MODEL = process.env.DEEPFUSION_MODEL || 'tokenrhythm/deepseek-v4-flash';
 const ORCH_DIR = path.join(process.cwd(), 'data', 'orchestrations');
 const MODES = ['fanout', 'pipeline', 'map-reduce', 'supervisor'];
 function ensureDir() { mkdirSync(ORCH_DIR, { recursive: true }); }
@@ -72,7 +72,7 @@ function parseSteps(text) {
   })).filter(s => s.task);
 }
 async function ask(prompt, timeoutMs = 240000) {
-  return runReasonixTask({ prompt, model: MODEL, timeoutMs, streamJson: true });
+  return runReasonixTask({ prompt, model: resolveModel(), timeoutMs, streamJson: true });
 }
 /* ---------------- 创建编排 ---------------- */
 export async function createOrchestration({

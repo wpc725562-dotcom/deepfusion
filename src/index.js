@@ -81,7 +81,8 @@ async function main() {
     case 'ledger': {
       try {
         const j = JSON.parse(readFileSync(path.join(process.cwd(), 'data', 'ledger.json'), 'utf8'));
-        const entries = j.entries || [];
+        // ledger.json 是顶层数组（server.js appendLedger 写入），兼容旧版 { entries:[...] }
+        const entries = Array.isArray(j) ? j : (j && Array.isArray(j.entries) ? j.entries : []);
         let totalIn = 0, totalOut = 0, totalHit = 0;
         for (const e of entries) { totalIn += e.usage?.inputTokens || 0; totalOut += e.usage?.outputTokens || 0; totalHit += e.usage?.cacheHitTokens || 0; }
         console.log('成本台账: ' + entries.length + ' 条记录');

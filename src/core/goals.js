@@ -11,8 +11,8 @@
  *     usage, createdAt, error }
  */
 import { runReasonixTask } from '../engine/runner.js';
+import { resolveModel } from './config.js';
 
-const MODEL = 'tokenrhythm/deepseek-v4-flash';
 const goals = new Map();   // id -> goal
 
 export function listGoals() {
@@ -64,7 +64,7 @@ async function runGoal(goal, concurrency) {
         // ---- 1. 总指挥拆解 ----
     const decompose = await runReasonixTask({
       prompt: '你是总指挥 Agent。请把下面的目标拆解为最多 ' + (goal.deep ? 6 : 4) + ' 个可独立执行的子任务（每个子任务必须自包含、含背景、目标、验收标准，子代理拿到后能独立完成）。只输出 JSON 数组，格式：[{"title":"子任务标题","task":"给子智能体的完整指令"}]。不要输出任何其他文字。目标：' + (goal.objective || '').replace(/\n/g, ' '),
-      model: MODEL, timeoutMs: 180000, streamJson: true
+      model: resolveModel(), timeoutMs: 180000, streamJson: true
     });
         const steps = parseSteps(decompose.text);
     if (!steps.length) {
@@ -83,7 +83,7 @@ async function runGoal(goal, concurrency) {
         const step = goal.steps[idx];
         step.status = 'running';
         try {
-          const r = await runReasonixTask({ prompt: step.task, model: MODEL, timeoutMs: 240000, streamJson: true });
+          const r = await runReasonixTask({ prompt: step.task, model: resolveModel(), timeoutMs: 240000, streamJson: true });
           step.status = r.ok ? 'done' : 'failed';
           step.result = r.text || '';
           step.usage = r.usage || {};

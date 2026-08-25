@@ -569,11 +569,14 @@ $('btn-chat-stop')?.addEventListener('click', () => {
 /* ========== 底部控制栏交互 ========== */
 
 // 运行模式切换
+function setChatMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  localStorage.setItem('df-mode', mode);
+}
 document.querySelectorAll('.mode-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentMode = btn.dataset.mode;
+    setChatMode(btn.dataset.mode);
   });
 });
 
@@ -594,10 +597,27 @@ if (savedModel) {
 $('btn-chat-send')?.addEventListener('click', sendChat);
 $('chat-input')?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+  // Ctrl+Y → YOLO 模式
+  if (e.ctrlKey && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); setChatMode('yolo'); }
+  // Shift+Tab → 循环切换模式（向后）
+  if (e.shiftKey && e.key === 'Tab') {
+    e.preventDefault();
+    const modes = Array.from(document.querySelectorAll('.mode-btn')).map(b => b.dataset.mode);
+    if (modes.length) {
+      const idx = modes.indexOf(currentMode);
+      setChatMode(modes[(idx + modes.length - 1) % modes.length]);
+    }
+  }
+  // Esc → 停止生成
+  if (e.key === 'Escape' && stopController) {
+    stopController.abort(); stopController = null;
+  }
 });
-// token 预估
+// token 预估 + composer 自动增高
 $('chat-input')?.addEventListener('input', (e) => {
   updateTokenEst(e.target.value.length);
+  e.target.style.height = 'auto';
+  e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px';
 });
 
 function updateTokenEst(len) {
@@ -761,7 +781,12 @@ showWelcome();
 document.querySelectorAll('.welcome__ex').forEach(b => {
   b.addEventListener('click', () => {
     const input = $('chat-input');
-    if (input) { input.value = b.dataset.prompt; input.focus(); }
+    if (!input) return;
+    input.value = b.dataset.prompt;
+    input.dispatchEvent(new Event('input'));
+    if (chatBusy) return;
+    if (b.dataset.prompt.startsWith('🧩')) { startMultiAgent(); }
+    else { sendChat(); }
   });
 });
 
