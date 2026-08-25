@@ -217,7 +217,7 @@ function renderAssistantBody(text) {
       remaining = remaining.slice(codeMatch[0].length);
       continue;
     }
-    // 思考块（> 开头或 think 区块）
+    // 思考块（ think 标签）
     const thinkMatch = remaining.match(/^<think>([\s\S]*?)<\/think>\n?/);
     if (thinkMatch) {
       out.push('<details class="think-block"><summary>🧠 思考过程</summary><div class="think-content">' + esc(thinkMatch[1]) + '</div></details>');
@@ -245,6 +245,9 @@ async function sendChat() {
   const text = input.value.trim();
   if (!text || chatBusy) return;
   chatBusy = true;
+  _lastChatText = text;
+  _lastChatModel = $('chat-model')?.value;
+  _lastChatMode = currentMode;
   $('btn-chat-send').disabled = true;
   $('btn-chat-send').textContent = '发送中';
   $('btn-chat-stop').classList.remove('hidden');
@@ -326,7 +329,7 @@ async function sendChat() {
     if (e.name === 'AbortError') {
       bodyEl.innerHTML = '（已停止）';
     } else {
-      bodyEl.innerHTML = '（请求失败: ' + esc(e.message) + '）';
+      bodyEl.innerHTML = '（请求失败: ' + esc(e.message) + '）<button class="btn-retry" onclick="window.retryLastChat()">🔄 重试</button>';
       msgDiv.classList.add('error');
     }
     msgDiv.querySelector('.stream-cursor')?.remove();
@@ -566,3 +569,15 @@ $('chat-window').innerHTML = '<div class="chat-empty"><div class="ce-big">💬</
 
 refresh();
 setInterval(refresh, 15000);
+
+// 重试上一次发送的对话
+let _lastChatText = null;
+let _lastChatModel = null;
+let _lastChatMode = null;
+window.retryLastChat = function() {
+  if (_lastChatText) {
+    const input = $('chat-input');
+    if (input) input.value = _lastChatText;
+    sendChat();
+  }
+};

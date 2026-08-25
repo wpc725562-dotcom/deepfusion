@@ -14,7 +14,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import readline from 'node:readline';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 
 /** 解析 usage（兼容原始键名与解析后键名），幂等 */
 function parseUsage(u = {}) {
@@ -92,14 +92,44 @@ function resolveReasonixLaunch(bin) {
       const js = path.join(path.dirname(shim), 'node_modules', m[1], 'bin', m[2].replace(/\.cmd$/i, '') + '.js');
       if (existsSync(js)) return { bin: 'node', args: [js] };
     }
-    // 通用 .cmd 解析：提取 js 入口
+    // npm 全局安装：<dp0>\node_modules\<binName>\bin\<binName>.js
+    const binName = path.basename(shim).replace(/\.cmd$/i, '');
+    const globalJs = path.join(path.dirname(shim), 'node_modules', binName, 'bin', binName + '.js');
+    if (existsSync(globalJs)) return { bin: 'node', args: [globalJs] };
+    // 通用 .cmd 解析：提取 js 入口（含 %dp0% 变量）
     try {
       const content = readFileSync(shim, 'utf8');
-      const jm = content.match(/\s"([^"]*node_modules[^"]+\.js)"\s+/);
-      if (jm && existsSync(jm[1])) return { bin: 'node', args: [jm[1]] };
+      // 匹配 %dp0%\node_modules\...js 模式
+      const jm = content.match(/%dp0%\\([^\s&"]+\.js)/i);
+      if (jm) {
+        const js = path.join(path.dirname(shim), jm[1]);
+        if (existsSync(js)) return { bin: 'node', args: [js] };
+      }
+      // 匹配字面路径模式
+      const jm2 = content.match(/\s"([^"]*node_modules[^"]+\.js)"\s+/);
+      if (jm2 && existsSync(jm2[1])) return { bin: 'node', args: [jm2[1]] };
     } catch {}
   }
   return { bin, args: [] };
+}
+
+/**
+ * 在 Windows 上解析 reasonix 启动路径，直接 spawn node + js 入口，
+ * 绕过 cmd.exe /c 包装 + npm .cmd shim 的 goto 技巧问题。
+ */
+function resolveWinLaunch(bin, args) {
+  // 先尝试解析 npm .cmd shim → node + js 入口
+  const resolved = resolveReasonixLaunch(bin);
+  if (resolved.bin !== bin && resolved.bin === 'node' && resolved.args.length > 0) {
+    return { bin: 'node', args: [...resolved.args, ...args] };
+  }
+  // 若直接是 .exe
+  if (/\\.exe$/i.test(resolved.bin)) {
+    return { bin: resolved.bin, args };
+  }
+  // 兜底：仍用 cmd /c 但走完整路径
+  const fullPath = resolved.bin !== bin ? resolved.bin : bin;
+  return { bin: 'cmd.exe', args: ['/c', fullPath, ...args] };
 }
 
   if (!prompt) {
@@ -115,14 +145,19 @@ function resolveReasonixLaunch(bin) {
   args.push('--effort', 'disabled');
   args.push(String(prompt));
 
-  // Windows：.cmd/.bat 或裸命令（PATH 中的 reasonix/npx）用 cmd.exe /c 包装
+  // Windows：优先解析 npm .cmd shim → node + js 入口，绕过 cmd.exe /c 包装
   let launchBin, launchArgs;
-  if (process.platform === 'win32' && !/\.(exe|com)$/i.test(bin)) {
-    launchBin = 'cmd.exe';
-    launchArgs = ['/c', bin, ...args];
+  if (process.platform === 'win32') {
+    const win = resolveWinLaunch(bin, args);
+    launchBin = win.bin;
+    launchArgs = win.args;
   } else {
     launchBin = bin;
     launchArgs = args;
+  }
+
+  if (process.platform === 'win32') {
+    console.log('[runner] 启动 reasonix: bin=' + launchBin + ' args=' + JSON.stringify(launchArgs));
   }
 
   let sawTextEvent = false;
@@ -220,21 +255,29 @@ function resolveReasonixLaunch(bin) {
     });
 
     proc.on('error', (err) => {
-      if (!settled) error = '启动 reasonix 失败: ' + (err.message || err);
+      if (!settled) {
+        error = '启动 reasonix 失败: ' + (err.message || err);
+        console.error('[runner] 启动 reasonix 失败:', err.message || err, '| stderr:', stderrBuf.slice(-1000));
+      }
     });
 
     proc.on('exit', (code) => {
       if (settled) return;
       if (timedOut) {
+        console.error('[runner] reasonix 执行超时 (' + timeoutMs + 'ms) | stderr:', stderrBuf.slice(-1000));
         finish({ ok: false, text: textParts.join(''), usage: parseUsage(usage), sessionId, durationMs, events, error: 'reasonix 执行超时（超过 ' + timeoutMs + 'ms），已强制终止', stderr: stderrBuf.slice(-2000) });
         return;
       }
       if (error) {
-        finish({ ok: false, text: textParts.join(''), usage: parseUsage(usage), sessionId, durationMs, events, error, stderr: stderrBuf.slice(-2000) });
+        console.error('[runner] reasonix 错误:', error, '| stderr:', stderrBuf.slice(-1000));
+        finish({ ok: false, text: textParts.join(''), usage: parseUsage(usage), sessionId, durationMs, events, error: error + ' | stderr: ' + stderrBuf.slice(-500).trim(), stderr: stderrBuf.slice(-2000) });
         return;
       }
       if (code !== 0) {
-        finish({ ok: false, text: textParts.join(''), usage: parseUsage(usage), sessionId, durationMs, events, error: 'reasonix 进程退出码非零: ' + code, stderr: stderrBuf.slice(-2000) });
+        const stderrDetail = stderrBuf.slice(-1000).trim();
+        const errMsg = 'reasonix 进程退出码非零: ' + code + (stderrDetail ? ' | stderr: ' + stderrDetail : '');
+        console.error('[runner] ' + errMsg);
+        finish({ ok: false, text: textParts.join(''), usage: parseUsage(usage), sessionId, durationMs, events, error: errMsg, stderr: stderrBuf.slice(-2000) });
         return;
       }
 

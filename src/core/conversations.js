@@ -75,10 +75,11 @@ export function createConversation(title) {
 
 /** 追加消息并保存 */
 export function appendMessage(conv, role, content, usage = null) {
-  content = sanitizeText(content, '');
-  conv.messages.push({ role, content, usage: usage || null, at: now() });
+  const clean = sanitizeText(content, '');
+  conv.messages.push({ role, content: clean || content, usage: usage || null, at: now() });
   if (role === 'user' && conv.title === '新对话' && content) {
-    conv.title = content.slice(0, 30) + (content.length > 30 ? '…' : '');
+    const titleSrc = (clean || content).replace(/\uFFFD/g, '').trim();
+    conv.title = titleSrc.slice(0, 15) + (titleSrc.length > 15 ? '…' : '');
   }
   conv.updatedAt = now();
   writeFileSync(convPath(conv.id), JSON.stringify(conv, null, 2), 'utf8');

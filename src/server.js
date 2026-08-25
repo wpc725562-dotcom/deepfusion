@@ -31,6 +31,7 @@
  */
 import http from 'node:http';
 import { readFileSync, existsSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overview, dispatchToReasonix, dispatchAllPending, engineConfig } from './core/orchestrator.js';
@@ -42,7 +43,7 @@ import { createGoal, getGoal, listGoals } from './core/goals.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(__dirname, 'web');
 const HOST = '127.0.0.1';
-const PORT = Number(process.env.DEEPFUSION_PORT || 43210);
+let PORT = Number(process.env.DEEPFUSION_PORT || 43210);
 const DATA_DIR = path.join(process.cwd(), 'data');
 const LEDGER_FILE = path.join(DATA_DIR, 'ledger.json');
 const BATCH_LIMIT = 3;
@@ -430,6 +431,35 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => {
-  console.log('DeepFusion 工作台已启动: http://' + HOST + ':' + PORT);
+/** 检测端口是否被占用 */
+function portInUse(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once('error', (err) => {
+      if (err.code === 'EADDRINUSE') resolve(true);
+      else resolve(false);
+    });
+    server.once('listening', () => {
+      server.close();
+      resolve(false);
+    });
+    server.listen(port, HOST);
+  });
+}
+
+async function startServer() {
+  // 检查端口占用
+  if (await portInUse(PORT)) {
+    console.error('[server] 端口 ' + PORT + ' 已被占用，尝试端口 ' + (PORT + 1));
+    PORT = PORT + 1;
+  }
+
+  server.listen(PORT, HOST, () => {
+    console.log('DeepFusion 工作台已启动: http://' + HOST + ':' + PORT);
+  });
+}
+
+startServer().catch(e => {
+  console.error('[server] 启动失败:', e.message || e);
+  process.exit(1);
 });

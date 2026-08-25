@@ -323,3 +323,12 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   .app { grid-template-columns: 210px 1fr 0; }
   .sidebar-right { display: none; }
 }
+
+/* ---------- 重试按钮 ---------- */
+.btn-retry {
+  background: transparent; border: 1px solid var(--accent);
+  color: var(--accent); border-radius: var(--radius-sm);
+  padding: 4px 10px; font-size: 12px; margin-left: 8px;
+  transition: all .15s; cursor: pointer;
+}
+.btn-retry:hover { background: var(--accent-dim); }
