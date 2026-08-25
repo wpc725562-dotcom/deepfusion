@@ -2,48 +2,61 @@
 /**
  * index.js — DeepFusion CLI 入口
  *   deepfusion web           启动 Web 工作台
- *   deepfusion engine        查看引擎状态
- *   deepfusion task add ...  添加任务
- *   deepfusion dispatch      派发全部 pending 给 reasonix（默认并发 2）
+ *   deepfusion chat "问题"   直接对话
  *   deepfusion run <taskId>  派发单个任务
- *   deepfusion ledger        查看成本台账（data/ledger.json）
+ *   deepfusion dispatch      派发全部 pending
+ *   deepfusion task add      添加任务
+ *   deepfusion plugin list   插件管理
+ *   deepfusion skill list    技能管理
+ *   deepfusion mcp list      MCP 管理
+ *   deepfusion config show   配置管理
+ *   deepfusion session list  会话管理
+ *   deepfusion ledger        成本台账
+ *   deepfusion doctor        诊断
+ *   deepfusion engine        引擎状态
+ *   deepfusion detect        检测引擎
  */
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { engineStatus, detectReasonix, loadConfig, saveConfig } from './engine/manager.js';
 import { createTask, listTasks, applyAction, getTask } from './core/queue.js';
 import { dispatchToReasonix, dispatchAllPending } from './core/orchestrator.js';
+import { chatCmd } from './cli/chat.js';
+import { pluginCmd } from './cli/plugin.js';
+import { skillCmd } from './cli/skill.js';
+import { mcpCmd } from './cli/mcp.js';
+import { doctorCmd } from './cli/doctor.js';
+import { sessionCmd } from './cli/session.js';
+import { loadConfig as loadCfg, CONFIG_DIR, ensureDirs } from './core/config.js';
 
 const [cmd, ...args] = process.argv.slice(2);
 
 async function main() {
   switch (cmd) {
     case 'web': {
-      await import('./server.js');
+      const { execSync } = await import('node:child_process');
+      execSync('node src/server.js', { stdio: 'inherit' });
       break;
     }
     case 'engine': {
-      const st = engineStatus();
-      console.log('=== Reasonix 引擎状态 ===');
-      if (!st.detected.length) {
-        console.log('未检测到引擎。安装: npm i -g reasonix && reasonix setup');
-      } else {
-        for (const d of st.detected) console.log('  [' + d.source + '] ' + d.bin + ' → ' + d.version);
-        console.log('可用: ' + (st.usable ? '是' : '否'));
-      }
+      console.log(JSON.stringify(engineStatus(), null, 2));
+      break;
+    }
+    case 'detect': {
+      console.log(JSON.stringify(detectReasonix(), null, 2));
       break;
     }
     case 'task': {
       const sub = args[0];
       if (sub === 'add') {
-        const t = createTask({ title: args[1] || '未命名', context: args.slice(2).join(' ') });
-        console.log('已创建: ' + t.id + ' [' + t.status + '] ' + t.title);
+        const t = await createTask({ title: args[1] || 'CLI 任务', context: args.slice(2).join(' '), verify: null });
+        console.log('创建: ' + t.id);
       } else if (sub === 'list') {
-        for (const t of listTasks()) {
-          console.log(t.id + ' [' + t.status + '] ' + (t.stalled ? '⚠停滞 ' : '') + t.title + ' owner=' + (t.owner || '-'));
+        const tasks = listTasks();
+        console.log('任务 (' + tasks.length + '):');
+        for (const t of tasks) {
+          console.log('  ' + t.id + ' [' + t.status + '] ' + (t.title || '').slice(0, 40));
         }
-      } else {
-        console.log('用法: deepfusion task add <标题> [上下文...] | list');
       }
       break;
     }
@@ -64,56 +77,55 @@ async function main() {
       }
       break;
     }
-    case 'detect': {
-      console.log(JSON.stringify(detectReasonix(), null, 2));
-      break;
-    }
     case 'ledger': {
-      const ledgerFile = path.join(process.cwd(), 'data', 'ledger.json');
-      if (!existsSync(ledgerFile)) {
-        console.log('台账不存在: ' + ledgerFile);
-        console.log('提示：还没有产生执行记录。先派发任务（deepfusion run/dispatch），成功后会写入台账。');
-        break;
-      }
-      let entries = [];
       try {
-        entries = JSON.parse(readFileSync(ledgerFile, 'utf8'));
-        if (!Array.isArray(entries)) entries = [];
-      } catch (e) {
-        console.error('台账解析失败: ' + ledgerFile + ' — ' + String(e.message || e));
-        break;
-      }
-      console.log('=== DeepFusion 成本台账 === (' + ledgerFile + ')');
-      if (!entries.length) {
-        console.log('（空）暂无派发记录');
-        break;
-      }
-      console.log('共 ' + entries.length + ' 条记录');
-      for (const e of entries) {
-        const u = e.usage || {};
-        const hit = (u.cacheHitTokens || 0) + (u.cacheMissTokens || 0);
-        const hitRate = hit > 0 ? Math.round((u.cacheHitTokens / hit) * 10000) / 100 + '%' : '-';
-        console.log(
-          (e.at || '').slice(0, 19) + '  ' + (e.taskId || '-') +
-          '  in=' + (u.inputTokens ?? 0) + ' out=' + (u.outputTokens ?? 0) +
-          ' cache=' + hitRate + ' dur=' + (e.durationMs ?? '-') + 'ms' +
-          '  ' + (e.title || '').slice(0, 40)
-        );
-      }
+        const j = JSON.parse(readFileSync(path.join(process.cwd(), 'data', 'ledger.json'), 'utf8'));
+        const entries = j.entries || [];
+        let totalIn = 0, totalOut = 0, totalHit = 0;
+        for (const e of entries) { totalIn += e.usage?.inputTokens || 0; totalOut += e.usage?.outputTokens || 0; totalHit += e.usage?.cacheHitTokens || 0; }
+        console.log('成本台账: ' + entries.length + ' 条记录');
+        console.log('总 input: ' + totalIn + ' · output: ' + totalOut + ' · cache 命中: ' + totalHit);
+        for (const e of entries.slice(-10)) {
+          console.log('  ' + (e.taskId || '').slice(0, 16) + ' · ' + (e.title || '').slice(0, 20) + ' · in=' + (e.usage?.inputTokens||0) + ' out=' + (e.usage?.outputTokens||0) + ' · ' + Math.round((e.durationMs||0)/1000) + 's');
+        }
+      } catch { console.log('（无台账数据）'); }
       break;
     }
-    default:
-      console.log('DeepFusion · 深融 — DSH × Reasonix 融合 Agent 引擎');
-      console.log('');
+    case 'chat': { await chatCmd(process.argv.slice(3)); break; }
+    case 'plugin': { await pluginCmd(process.argv.slice(3)); break; }
+    case 'skill': { await skillCmd(process.argv.slice(3)); break; }
+    case 'mcp': { await mcpCmd(process.argv.slice(3)); break; }
+    case 'doctor': { await doctorCmd(); break; }
+    case 'session': { await sessionCmd(process.argv.slice(3)); break; }
+    case 'config': {
+      const cfg = loadCfg();
+      ensureDirs();
+      const sub = process.argv[3];
+      if (sub === 'show') { console.log(JSON.stringify(cfg, null, 2)); }
+      else if (sub === 'dir') { console.log(CONFIG_DIR); }
+      else if (sub === 'init') { console.log('配置目录: ' + CONFIG_DIR + '（默认配置自动生效）'); }
+      else { console.log('用法: deepfusion config show | dir | init'); }
+      break;
+    }
+    default: {
+      console.log('DeepFusion CLI');
       console.log('用法:');
-      console.log('  deepfusion web              启动 Web 工作台 (http://127.0.0.1:43210)');
-      console.log('  deepfusion engine           查看 reasonix 引擎状态');
-      console.log('  deepfusion task add <标题>  添加任务');
-      console.log('  deepfusion task list        列出任务');
-      console.log('  deepfusion run <taskId>     派发单个任务给 reasonix');
-      console.log('  deepfusion dispatch         派发全部 pending 任务（--concurrency 参数可调并发，默认 2）');
-      console.log('  deepfusion ledger           查看成本台账 data/ledger.json');
+      console.log('  web             启动 Web 工作台');
+      console.log('  chat <问题>     直接对话 (reasonix)');
+      console.log('  run <taskId>    派发任务');
+      console.log('  dispatch        派发全部 pending');
+      console.log('  task add/list   任务队列');
+      console.log('  plugin          插件管理');
+      console.log('  skill           技能管理');
+      console.log('  mcp             MCP 管理');
+      console.log('  config          配置管理');
+      console.log('  session         会话管理');
+      console.log('  ledger          成本台账');
+      console.log('  doctor          诊断');
+      console.log('  engine/detect   引擎状态');
+      break;
+    }
   }
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch(e => console.error('错误:', e.message));
