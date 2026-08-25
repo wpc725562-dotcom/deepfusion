@@ -2,6 +2,8 @@
 
 **DSH × Reasonix 融合 Agent 引擎** — 把 DeepSeek Harness 的编排哲学与 Reasonix 的执行引擎融为一个自用智能体应用。
 
+> 📖 [完整身份声明 →](docs/IDENTITY.md) 运行时架构、执行模型、能力栈、工程评估的深度介绍
+
 > "single-column, developer-dense, terminal-flavored" 终端风界面（参考 Reasonix Desktop 风格）
 
 ## ✨ 特性
