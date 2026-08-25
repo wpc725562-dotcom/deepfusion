@@ -39,7 +39,7 @@ import { createTask, applyAction, getTask, listTasks } from './core/queue.js';
 import { listConversations, getConversation, createConversation, appendMessage, buildContextPrompt } from './core/conversations.js';
 import { runReasonixTask } from './engine/runner.js';
 import { createGoal, getGoal, listGoals, resumeGoal } from './core/goals.js';
-import { createOrchestration, getOrchestration, listOrchestrations } from './core/orchestration.js';
+import { createOrchestration, getOrchestration, listOrchestrations, pauseOrchestration, resumeOrchestration, resetOrchestration } from './core/orchestration.js';
 import { createJob, getJob, listJobs, killJob } from './core/jobs.js';
 import { createTunnelService } from './dshtunnel/index.js';
 import * as pocketSettings from './dshtunnel/index.js';
@@ -392,6 +392,18 @@ const server = http.createServer(async (req, res) => {
       const o = getOrchestration(om[1]);
       if (!o) return fail(res, 404, '编排不存在');
       return ok(res, { ok: true, orchestration: o });
+    }
+
+    // 编排暂停/恢复/重置
+    let op = p.match(/^\/api\/orchestrations\/([^/]+)\/(pause|resume|reset)$/);
+    if (method === 'POST' && op) {
+      const action = op[2];
+      let r;
+      if (action === 'pause') r = pauseOrchestration(op[1]);
+      else if (action === 'resume') r = resumeOrchestration(op[1]);
+      else if (action === 'reset') r = resetOrchestration(op[1]);
+      if (!r) return fail(res, 400, '操作失败：编排不存在或状态不允许');
+      return ok(res, { ok: true, result: r });
     }
 
     if (method === 'POST' && p === '/api/orchestrate') {

@@ -850,11 +850,16 @@ async function renderTracePanel() {
     let html = '';
     if (orchs.length) {
       html += '<h3 style="margin:8px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)">⚡ 编排记录</h3>';
-      html += orchs.slice(0, 5).map(o => {
+      html += orchs.slice(0, 10).map(o => {
         const modeLabel = { fanout: '扇出', pipeline: '流水线', 'map-reduce': '拆分-归约', supervisor: '评审合成' }[o.mode] || o.mode;
+        const statusLabel = o.status === 'done' ? '✅ 完成' : o.status === 'failed' ? '❌ 失败' : o.status === 'blocked' ? '🚫 熔断' : o.status === 'paused' ? '⏸ 已暂停' : '⏳ 进行中';
+        const actions = [];
+        if (o.status === 'running' || o.phase === 'executing') actions.push('<button class="trace-btn" onclick="orchAction(\'' + o.id + '\',\'pause\')">⏸ 暂停</button>');
+        if (o.status === 'paused') actions.push('<button class="trace-btn" onclick="orchAction(\'' + o.id + '\',\'resume\')">▶ 继续</button>');
+        if (o.status === 'blocked' || o.status === 'failed') actions.push('<button class="trace-btn" onclick="orchAction(\'' + o.id + '\',\'reset\')">🔄 重置</button>');
         const steps = [];
         if (o.result) steps.push('<div class="trace-node done"><div class="tn-head">✅ 结果</div><div class="tn-body">' + esc(o.result).slice(0, 300) + '</div></div>');
-        return '<div class="trace-group" style="margin-bottom:10px"><div class="trace-group-head">⚡ ' + modeLabel + '：' + esc(o.objective).slice(0, 40) + ' <span class="trace-status">' + (o.status === 'done' ? '✅ 完成' : o.status === 'failed' ? '❌ 失败' : o.status === 'blocked' ? '🚫 熔断' : '⏳ 进行中') + '</span></div>' + steps.join('') + '</div>';
+        return '<div class="trace-group" style="margin-bottom:10px"><div class="trace-group-head">⚡ ' + modeLabel + '：' + esc(o.objective).slice(0, 40) + ' <span class="trace-status">' + statusLabel + '</span></div><div class="trace-actions">' + actions.join('') + '</div>' + steps.join('') + '</div>';
       }).join('');
     }
     // 目标记录
@@ -874,6 +879,17 @@ async function renderTracePanel() {
 
 // 替换原有的 renderTracePanel（旧版单纯 goals 渲染）
 // 已用新版覆盖
+
+// 编排操作（暂停/恢复/重置）
+window.orchAction = async function(id, action) {
+  try {
+    const r = await api('/api/orchestrations/' + id + '/' + action, { method: 'POST' });
+    if (r.ok) renderTracePanel();
+    else alert(action + ' 失败: ' + (r.error || ''));
+  } catch (e) {
+    alert('操作失败: ' + e.message);
+  }
+};
 
 refresh();
 setInterval(refresh, 15000);

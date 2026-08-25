@@ -25,6 +25,36 @@ export function listOrchestrations() {
   return list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 }
 export function getOrchestration(id) { return load(id); }
+/* ---------------- 暂停/恢复/重置 ---------------- */
+export function pauseOrchestration(id) {
+  const o = load(id);
+  if (!o) return null;
+  if (o.status !== 'running' && o.status !== 'decomposing' && o.phase !== 'executing') return null;
+  o.status = 'paused'; o.phase = 'paused';
+  o.updatedAt = new Date().toISOString(); save(o);
+  return { id: o.id, status: o.status, phase: o.phase };
+}
+export function resumeOrchestration(id) {
+  const o = load(id);
+  if (!o) return null;
+  if (o.status !== 'paused') return null;
+  o.status = 'running'; o.phase = 'executing';
+  o.updatedAt = new Date().toISOString(); save(o);
+  // 续跑：异步继续执行
+  runOrchestration(o).catch((e) => { o.status = 'failed'; o.error = String(e.message || e); save(o); });
+  return { id: o.id, status: o.status, phase: o.phase };
+}
+export function resetOrchestration(id) {
+  const o = load(id);
+  if (!o) return null;
+  if (o.status !== 'blocked' && o.status !== 'failed') return null;
+  o.status = 'running'; o.phase = 'decomposing';
+  o.recentErrors = []; o.error = null; o.blocked = null;
+  o.revision = (o.revision || 1) + 1;
+  o.updatedAt = new Date().toISOString(); save(o);
+  runOrchestration(o).catch((e) => { o.status = 'failed'; o.error = String(e.message || e); save(o); });
+  return { id: o.id, status: o.status, phase: o.phase };
+}
 /* ---------------- 辅助：reasonix 调用 + 拆解 ---------------- */
 function parseSteps(text) {
   const t = String(text || '');
@@ -113,6 +143,9 @@ async function runSteps(o) {
   let cursor = 0;
   const worker = async () => {
     while (cursor < o.steps.length) {
+      // 检查暂停状态
+      const current = load(o.id);
+      if (current && current.status === 'paused') return;
       const idx = cursor++; const step = o.steps[idx];
       step.status = 'running'; o.updatedAt = new Date().toISOString(); save(o);
       try {
@@ -155,6 +188,9 @@ async function runPipeline(o) {
   let ctx = o.objective; const outputs = [];
   const stepList = o.steps;
   for (const step of stepList) {
+    // 检查暂停状态
+    const current = load(o.id);
+    if (current && current.status === 'paused') return finish(o, 'paused', o.result || '', '已暂停');
     step.status = 'running'; o.doneCount++; o.updatedAt = new Date().toISOString(); save(o);
     const idx = stepList.indexOf(step) + 1;
     const p = '【流水线阶段 ' + idx + '】' + step.title + '\n\n' + step.task + '\n\n【前一阶段输出作参考】\n' + ctx.slice(0, 4000);
