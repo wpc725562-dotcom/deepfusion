@@ -225,7 +225,7 @@ async function handleStreamChat(req, res, body) {
   const conv = body.conversationId ? getConversation(body.conversationId) : null;
   const c = conv || createConversation(message.slice(0, 30));
   appendMessage(c, 'user', message);
-  const prompt = buildContextPrompt(c, message);
+  const prompt = AGENT_BOOT + '\n\n【对话记录】\n' + buildContextPrompt(c, message);
   const runId = 'run_' + Date.now().toString(36);
 
   res.writeHead(200, {
@@ -243,6 +243,7 @@ async function handleStreamChat(req, res, body) {
   let phase = 'thinking';
   const r = await runReasonixTask({
     prompt,
+    cwd: process.cwd(),
     model,
     timeoutMs: 180000,
     streamJson: true,   // stream-json 模式：text 事件带正文增量
@@ -334,9 +335,10 @@ const server = http.createServer(async (req, res) => {
       const conv = body.conversationId ? getConversation(body.conversationId) : null;
       const c = conv || createConversation(message.slice(0, 30));
       appendMessage(c, 'user', message);
-      const prompt = buildContextPrompt(c, message);
+      const prompt = AGENT_BOOT + '\n\n【对话记录】\n' + buildContextPrompt(c, message);
       const r = await runReasonixTask({
         prompt,
+        cwd: process.cwd(),
         model: body.model || DEFAULT_MODEL,
         timeoutMs: 180000
       });
