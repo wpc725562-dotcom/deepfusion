@@ -115,3 +115,96 @@
 - ACP 备用通道未端到端验证（需 reasonix ACP server 实测）。
 - npx 检测首次联网较慢（15s 超时），离线环境会误报不可用。
 - 任务结果截断 2000 字，超长输出需查 reasonix 原始事件。
+
+## 6. 前端界面架构（v0.4+）
+
+### 6.1 四栏布局
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  顶栏（topbar）：Logo + 路径 + 引擎状态                    38px │
+├──────────┬──────────────────────────────────┬───────────────────┤
+│ 左侧边栏  │         中间主区                  │  右侧边栏         │
+│ (264px)  │     (flex: 1)                    │  (248px)          │
+│          │  ┌─────────────────────────────┐  │  上下文环形进度    │
+│ 会话管理  │  │ 标签页：💬对话 🕸轨迹 🧠上下文 │  │  会话指标(5项)    │
+│ 新建对话  │  ├─────────────────────────────┤  │  用量分析(4类)    │
+│ 搜索框   │  │  对话流 / 轨迹 / 上下文内容    │  │  子代理面板       │
+│ 会话列表  │  │  (flex: 1, overflow-y: auto) │  │                   │
+│          │  ├─────────────────────────────┤  │                   │
+│ 账户信息  │  │  底部控制栏                    │  │                   │
+│ 设置按钮  │  │  工具按钮 · 6模式 · 模型选择   │  │                   │
+│          │  │  输入框 + 发送/停止 + 预估tok  │  │                   │
+└──────────┴──────────────────────────────────┴───────────────────┘
+```
+
+### 6.2 前端组件树
+
+```
+src/web/
+├── index.html      — HTML 骨架：四栏布局 + 标签页 + 控制栏
+├── style.css       — 深色主题样式（Reasonix 风格移植）
+│   ├── 主题 Token  : --bg, --accent, --font, --font-mono
+│   ├── 四栏布局    : grid-template-columns: 264px 1fr 248px
+│   ├── 顶栏        : 自定义顶栏（替代系统菜单栏）
+│   ├── 左侧会话    : 搜索/新建/列表/选中态
+│   ├── 消息流      : 用户/助手/错误/思考块/代码块
+│   ├── 底部控制栏  : 模式按钮/输入框/发送
+│   ├── 右侧监控    : 环形进度/指标/用量/子代理
+│   └── 响应式      : ≤1100px 隐藏右侧栏
+├── app.js          — 前端逻辑
+│   ├── 会话管理    : loadConversations/openConversation
+│   ├── SSE 流式对话 : sendChat (fetch + ReadableStream)
+│   ├── 消息渲染    : renderMessages/renderAssistantBody
+│   │   ├── 代码块  : ```lang → 高亮 + 复制按钮
+│   │   ├── 思考块  :  thinking → 折叠面板
+│   │   └── 普通文本 : 正文
+│   ├── 多代理      : startMultiAgent/pollGoal/loadSubagents
+│   ├── 右侧面板    : refreshRightPanel/updateContextRing/updateMetrics
+│   ├── 思考轨迹页  : renderTracePanel (goals 时间线)
+│   ├── 上下文页    : renderContextPanel (会话信息/消息)
+│   └── 错误处理    : 重试按钮 (retryLastChat)
+└── manifest.json   — PWA 清单
+```
+
+### 6.3 SSE 流式协议
+
+```
+POST /api/chat/stream → text/event-stream
+
+event: turn_started   data: {"runId","mode","conversationId"}
+event: text           data: {"text":"增量"}          —— 打字机增量
+event: phase          data: {"phase":"thinking|acting|streaming"}
+event: usage          data: {"usage":{inputTokens,outputTokens,cacheHitTokens,cacheMissTokens}}
+event: context        data: {"rawTokens","compressedTokens","ratio","pct","warn"}
+event: run_done       data: {"ok","durationMs","text","error"}
+```
+
+前端用 `ReadableStream` 逐行解析 SSE，text 事件实时追加到 body 流式渲染，对话结束后调用 `renderAssistantBody` 重新渲染为完整格式（代码块高亮、思考块折叠）。
+
+### 6.4 中文字体兜底规范
+
+```css
+--font: -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+        "Microsoft YaHei", "微软雅黑", "Noto Sans CJK SC",
+        "Source Han Sans SC", sans-serif;
+```
+
+优先级：macOS 系统字体 → 苹方 → 冬青黑体 → 微软雅黑 → Noto → 思源 → 默认无衬线。
+所有 JSON 读写、HTTP 响应头强制 `charset=utf-8`。
+
+## 7. 决策记录更新（v0.4.1）
+
+### ADR-006：Windows 启动绕过 cmd.exe shim 直接 spawn node + js 入口
+
+- **背景**：v0.3 使用 `cmd.exe /c reasonix.cmd run ...` 启动 reasonix，但 npm 生成的 `.cmd` shim 中的 `endLocal & goto #_undefined_# 2>NUL ||` 技巧在 `cmd /c` 下可能导致 reasonix 未真正执行就退出（退出码 1）。
+- **决策**：新增 `resolveWinLaunch()` 函数，在 Windows 上优先解析 npm `.cmd` shim 为 `node + 实际 js 入口`，直接 spawn node.exe，绕过 cmd 的 goto 技巧。
+- **解析路径**：`<APPDATA>\npm\reasonix.cmd` → `<APPDATA>\npm\node_modules\reasonix\bin\reasonix.js`
+- **回退**：若解析失败，仍用 `cmd.exe /c` 走完整路径兜底。
+- **效果**：退出码 1 问题已修复，所有错误分支打印完整 stderr 到控制台。
+
+### ADR-007：前端会话标题从 sanitized 内容提取
+
+- **背景**：引擎返回乱码（U+FFFD 替换符）时，`sanitizeText` 将内容替换为 fallback，但标题仍用原始乱码内容切片，导致会话列表显示乱码或全屏「历史对话」。
+- **决策**：`appendMessage` 中标题从 sanitized 后的内容提取（去除替换符），只取前 15 字。
+- **效果**：新建会话会自动取用户首条消息前 15 字作为标题，乱码数据在前端刷新后自动修复。

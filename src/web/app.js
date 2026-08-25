@@ -136,6 +136,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     $('panel-' + btn.dataset.tab).classList.add('active');
+    // 进入对应标签页时刷新内容
+    if (btn.dataset.tab === 'trace') renderTracePanel();
+    if (btn.dataset.tab === 'context') renderContextPanel();
   });
 });
 
@@ -580,4 +583,93 @@ window.retryLastChat = function() {
     if (input) input.value = _lastChatText;
     sendChat();
   }
+};
+
+/* ========== 思考轨迹页渲染 ========== */
+
+async function renderTracePanel() {
+  const el = $('trace-window');
+  if (!el) return;
+  try {
+    const j = await api('/api/goals');
+    const goals = j.goals || [];
+    if (!goals.length) {
+      el.innerHTML = '<div class="panel-empty">暂无任务执行记录。使用多代理功能后，任务拆解与子代理全链路将在此展示。</div>';
+      return;
+    }
+    // 取最新 5 个目标
+    const recent = goals.slice(0, 5);
+    el.innerHTML = recent.map(g => {
+      const steps = (g.steps || []).filter(s => s.title);
+      const stepHtml = steps.length
+        ? steps.map(s => {
+            const icon = s.status === 'done' ? '✅' : s.status === 'running' ? '⏳' : s.status === 'failed' ? '❌' : '⬜';
+            const result = s.result ? '<div class="trace-result">' + esc(s.result).slice(0, 200) + '</div>' : '';
+            return '<div class="trace-node ' + (s.status||'') + '"><div class="tn-head">' + icon + ' ' + esc(s.title) + '</div><div class="tn-meta">' + (s.status||'pending') + (s.durationMs ? ' · ' + (s.durationMs/1000).toFixed(1) + 's' : '') + '</div>' + result + '</div>';
+          }).join('')
+        : '<div class="trace-node"><div class="tn-head">⏳ 拆解中…</div><div class="tn-meta">总指挥正在拆解目标</div></div>';
+      return '<div class="trace-group"><div class="trace-group-head">🎯 ' + esc(g.objective).slice(0, 40) + (g.objective.length > 40 ? '…' : '') + ' <span class="trace-status">' + (g.status === 'done' ? '✅ 完成' : g.status === 'failed' ? '❌ 失败' : '⏳ 进行中') + '</span></div>' + stepHtml + '</div>';
+    }).join('');
+  } catch {}
+}
+
+/* ========== 上下文页渲染 ========== */
+
+async function renderContextPanel() {
+  const el = $('context-window');
+  if (!el) return;
+  if (!currentConvId) {
+    el.innerHTML = '<div class="panel-empty">未选择对话。选择对话后，系统提示词、历史消息、上下文信息将在此展示。</div>';
+    return;
+  }
+  try {
+    const j = await api('/api/conversations/' + currentConvId);
+    const c = j.conversation;
+    if (!c) {
+      el.innerHTML = '<div class="panel-empty">对话不存在或已删除</div>';
+      return;
+    }
+    const msgs = c.messages || [];
+    const ctx = await api('/api/usage/context');
+    let html = '';
+
+    // 会话信息
+    html += '<div class="ctx-section"><h3>📋 会话信息</h3><div class="ctx-info">';
+    html += '<div class="ctx-row"><span>ID</span><code>' + esc(c.id) + '</code></div>';
+    html += '<div class="ctx-row"><span>标题</span><b>' + esc(c.title) + '</b></div>';
+    html += '<div class="ctx-row"><span>消息数</span><b>' + msgs.length + '</b></div>';
+    if (ctx.ok) html += '<div class="ctx-row"><span>上下文</span><b>' + (ctx.pct || 0) + '%</b> <span class="dim">(' + (ctx.rawTokens||0) + ' tok)</span></div>';
+    html += '</div></div>';
+
+    // 系统提示词（如果有）
+    const sysMsg = msgs.filter(m => m.role === 'system');
+    if (sysMsg.length) {
+      html += '<div class="ctx-section"><h3>⚙ 系统提示词</h3>';
+      html += sysMsg.map(m => '<div class="ctx-msg system">' + esc(m.content).slice(0, 500) + '</div>').join('');
+      html += '</div>';
+    }
+
+    // 最近消息（最多 6 条）
+    const recent = msgs.slice(-6);
+    if (recent.length) {
+      html += '<div class="ctx-section"><h3>💬 最近消息</h3>';
+      html += recent.map(m => {
+        const roleLabel = m.role === 'user' ? '👤 用户' : '🤖 助手';
+        const body = esc(m.content || '').slice(0, 300);
+        return '<div class="ctx-msg ' + (m.role||'') + '"><div class="ctx-msg-head">' + roleLabel + ' <span class="dim">' + formatTime(m.at) + '</span></div><div class="ctx-msg-body">' + body + '</div></div>';
+      }).join('');
+      html += '</div>';
+    }
+
+    el.innerHTML = html;
+  } catch {
+    el.innerHTML = '<div class="panel-empty">加载上下文失败</div>';
+  }
+}
+
+// 在打开对话时也刷新 context 面板
+const _origOpenConv = openConversation;
+openConversation = async function(cid) {
+  await _origOpenConv(cid);
+  renderContextPanel();
 };
