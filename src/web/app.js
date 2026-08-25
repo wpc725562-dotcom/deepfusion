@@ -110,6 +110,14 @@ function esc(s) {
 }
 
 function formatTime(d) { return (d || '').slice(5, 16).replace('T', ' '); }
+function fmtTok(n) {
+  if (!n) return '0';
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k';
+  return '' + n;
+}
+function showWelcome() { const wl = $('welcome'); if (wl) wl.classList.remove('hidden'); }
+function hideWelcome() { const wl = $('welcome'); if (wl) wl.classList.add('hidden'); }
 
 /* ========== 打字机（SSE 增量文本逐字吐出） ========== */
 const Typewriter = (() => {
@@ -162,9 +170,7 @@ async function startMultiAgent() {
   const objective = input.value.trim();
   if (!objective || chatBusy) return;
   const w = $('chat-window');
-  const empty = w.querySelector('.chat-empty');
-  if (empty) empty.remove();
-  // 用户消息
+  hideWelcome();
   w.insertAdjacentHTML('beforeend', '<div class="msg user"><div class="msg-bubble">🧩 多代理执行：' + esc(objective) + '</div></div>');
   // 目标卡片
   const card = document.createElement('div');
@@ -304,7 +310,9 @@ async function loadConversations() {
 $('conv-search')?.addEventListener('input', () => loadConversations());
 $('btn-new-conv')?.addEventListener('click', () => {
   currentConvId = null;
-  $('chat-window').innerHTML = '<div class="chat-empty"><div class="ce-big">💬</div>开始新对话</div>';
+  const w = $('chat-window');
+  if (w) w.querySelectorAll('.msg').forEach(m => m.remove());
+  showWelcome();
   $('chat-cost').textContent = '';
   loadConversations();
 });
@@ -323,8 +331,9 @@ async function openConversation(cid) {
 function renderMessages(messages) {
   const w = $('chat-window');
   if (!w) return;
+  hideWelcome();
   if (!messages || !messages.length) {
-    w.innerHTML = '<div class="chat-empty"><div class="ce-big">💬</div>开始新对话。输入消息并发送。</div>';
+    showWelcome();
     return;
   }
   w.innerHTML = messages.map(m => {
@@ -408,9 +417,7 @@ async function sendChat() {
   const model = $('chat-model')?.value || 'tokenrhythm/deepseek-v4-flash';
 
   const w = $('chat-window');
-  const empty = w.querySelector('.chat-empty');
-  if (empty) empty.remove();
-  // 用户消息
+  hideWelcome();
   w.insertAdjacentHTML('beforeend', '<div class="msg user"><div class="msg-bubble">' + esc(text) + '</div></div>');
   // 助理消息容器（流式追加）
   const msgDiv = document.createElement('div');
@@ -573,9 +580,15 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
 // 模型选择持久化
 $('chat-model')?.addEventListener('change', (e) => {
   localStorage.setItem('df-model', e.target.value);
+  const wm = $('welcome-model');
+  if (wm) wm.textContent = e.target.value;
 });
 const savedModel = localStorage.getItem('df-model');
-if (savedModel) $('chat-model').value = savedModel;
+if (savedModel) {
+  $('chat-model').value = savedModel;
+  const wm = $('welcome-model');
+  if (wm) wm.textContent = savedModel;
+}
 
 // 发送按钮
 $('btn-chat-send')?.addEventListener('click', sendChat);
@@ -622,7 +635,9 @@ function updateContextRing(d) {
     fg.className = 'ctx-bar__fill' + (pct > 80 ? ' danger' : pct > 60 ? ' warn' : '');
   }
   const detail = $('ctx-detail');
-  if (detail) detail.textContent = '原始 ' + (d.rawTokens || 0) + ' · 压缩 ' + (d.compressedTokens || 0) + ' · 压缩率 ' + (d.ratio || 0);
+  if (detail) detail.textContent = fmtTok(d.compressedTokens || 0) + ' tok';
+  const num2 = $('ctx-num');
+  if (num2) num2.textContent = fmtTok(Math.max(d.rawTokens || 0, d.compressedTokens || 0)) + ' tok';
 }
 
 function updateMetrics(d) {
@@ -740,7 +755,15 @@ if (savedMode) {
 }
 
 // 对话默认页面
-$('chat-window').innerHTML = '<div class="chat-empty"><div class="ce-big">💬</div>开始新对话。输入消息并发送。</div>';
+showWelcome();
+
+/* ========== Welcome 示例卡片点击 ========== */
+document.querySelectorAll('.welcome__ex').forEach(b => {
+  b.addEventListener('click', () => {
+    const input = $('chat-input');
+    if (input) { input.value = b.dataset.prompt; input.focus(); }
+  });
+});
 
 /* ========== 模态框 hash 路由（刷新后可恢复面板） ========== */
 function openModalByHash() {
@@ -764,8 +787,7 @@ async function startOrchestration() {
   if (!objective || chatBusy) return;
   const mode = $('orch-mode')?.value || 'fanout';
   const w = $('chat-window');
-  const empty = w.querySelector('.chat-empty');
-  if (empty) empty.remove();
+  hideWelcome();
   const modeLabel = { fanout: '扇出并行', pipeline: '流水线', 'map-reduce': '拆分-归约', supervisor: '评审合成' }[mode] || mode;
   w.insertAdjacentHTML('beforeend', '<div class="msg user"><div class="msg-bubble">⚡ ' + modeLabel + '：' + esc(objective) + '</div></div>');
   const card = document.createElement('div');

@@ -56,6 +56,18 @@ let pocketService = null;
 const MODELS = ['tokenrhythm/deepseek-v4-flash', 'tokenrhythm/deepseek-v4-pro', 'tokenrhythm/glm-5.2', 'tokenrhythm/kimi-k2.5', 'tokenrhythm/qwen3.7-max'];
 const DEFAULT_MODEL = 'tokenrhythm/deepseek-v4-flash'; // 可用且有计费的 provider
 
+// ★ Agent 引导提示词：让 reasonix 以"智能体"身份运行，
+//   主动用工具探索项目、深入分析，而不是退化为纯聊天机器人。
+const AGENT_BOOT = [
+  '你是 DeepFusion 深融 的编码智能体（Agent），工作目录是：' + process.cwd(),
+  '你的核心能力：可以调用 bash / read_file / edit 等工具读取项目结构、查找文件、执行命令、修改代码，从而真正动手完成用户的开发需求。',
+  '行为准则：',
+  '1. 不要只做寒暄或空泛回答。对每个请求，先判断是否需要查看项目文件、运行命令来给出准确答案；需要时就自主调用工具探索，而不是凭猜测回答。',
+  '2. 涉及代码、结构、运行问题，主动查看 package.json、目录结构、相关源码后再回答。',
+  '3. 回答要具体、深入、可落地；能给出代码就给出代码。',
+  '4. 用户只是打招呼时，简要说明你能做什么，并引导 TA 提出具体开发任务。'
+].join('\n');
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',

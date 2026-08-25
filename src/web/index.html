@@ -10,47 +10,64 @@
 <body>
 <div id="app" class="app">
 
-  <!-- ══ 左侧边栏：Reasonix 结构（品牌 → 导航 → 会话 → 监控） ══ -->
+  <!-- ══ 左侧边栏（Reasonix 1:1 结构） ══ -->
   <aside id="sidebar-left" class="sidebar-left">
     <div class="sidebar__brand">
-      <span class="brand-wordmark">Deep<span>Fusion</span> 深融</span>
+      <span class="brand-wordmark brand-wordmark--sidebar">Deep<span>Fusion</span> 深融</span>
     </div>
     <nav class="sidebar__nav">
-      <button class="sidebar__item sidebar__item--accent" id="btn-new-conv" title="新建对话">＋ 新建对话</button>
-      <button class="sidebar__item" id="btn-goal" title="多代理执行（总指挥拆解 → 子代理池）">🧩 多代理</button>
-      <button class="sidebar__item" id="btn-orch" title="启动编排">⚡ 编排</button>
+      <div class="sidebar__item sidebar__item--accent" id="btn-new-conv" title="新建对话">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        <span>新会话</span>
+      </div>
+      <div class="sidebar__item" id="btn-goal" title="多代理执行（总指挥拆解 → 子代理池）">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/></svg>
+        <span>多代理</span>
+      </div>
+      <div class="sidebar__item" id="btn-orch" title="启动编排">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        <span>编排</span>
+      </div>
       <div class="sidebar__sep"></div>
-      <button class="sidebar__item" id="btn-settings" title="设置">⚙ 设置</button>
-      <button class="sidebar__item" id="btn-phone" title="手机访问">📱 手机访问</button>
+      <div class="sidebar__item" id="btn-stats" title="统计">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+        <span>统计</span>
+      </div>
+      <div class="sidebar__item" id="btn-settings" title="设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>设置</span>
+      </div>
+      <div class="sidebar__item" id="btn-phone" title="手机访问">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+        <span>手机访问</span>
+      </div>
     </nav>
     <div class="sidebar__label-row">
       <span class="sidebar__label">会话</span>
       <span id="session-count" class="session-item__meta"></span>
     </div>
     <div class="session-search">
-      <input id="conv-search" class="session-search__input" type="search" placeholder="搜索会话…">
-      <button id="btn-conv-sort" class="btn-ghost" title="排序">⇅</button>
+      <input id="conv-search" class="session-search__input" type="search" placeholder="搜索会话">
     </div>
     <div id="conv-groups" class="conv-groups"></div>
     <div class="sidebar__section">
       <div class="sidebar__ctx">
         <div class="ctx-bar"><div class="ctx-bar__fill" id="ctx-fill" style="width:0%"></div></div>
-        <div class="ctx-label"><span id="ctx-num">0%</span><span id="ctx-detail">原始 -- · 压缩 --</span></div>
+        <div class="ctx-label"><span id="ctx-num">0 tok</span><span id="ctx-detail">0 tok</span></div>
       </div>
       <div class="status-metrics">
+        <div class="sm-item"><span class="sm-val" id="m-cache">0%</span><span class="sm-label">缓存</span></div>
         <div class="sm-item"><span class="sm-val acc" id="m-cost">--</span><span class="sm-label">费用</span></div>
-        <div class="sm-item"><span class="sm-val" id="m-run">--</span><span class="sm-label">时长</span></div>
-        <div class="sm-item"><span class="sm-val" id="m-req">--</span><span class="sm-label">请求</span></div>
-        <div class="sm-item"><span class="sm-val" id="m-cache">--</span><span class="sm-label">缓存</span></div>
+        <div class="sm-item"><span class="sm-val" id="m-req">0</span><span class="sm-label">请求</span></div>
       </div>
       <div id="breakdown" class="breakdown"></div>
       <div id="subagents" class="subagents"><div class="empty">0 个激活</div></div>
-      <div class="status" id="sidebar-status">引擎就绪</div>
+      <div class="status"><span class="status__dot" style="background: var(--success);"></span><span id="sidebar-status">已连接</span></div>
       <div id="account-mini" class="account-mini">余额 --</div>
     </div>
   </aside>
 
-  <!-- ══ 中间主区：多标签核心交互区 ══ -->
+  <!-- ══ 中间主区 ══ -->
   <main id="main" class="main">
     <div class="main-tabs">
       <button class="tab-btn active" data-tab="chat">💬 对话</button>
@@ -60,39 +77,61 @@
       <div id="agents-badge" class="agents-badge hidden" title="激活子代理">⚙ 0 激活</div>
     </div>
 
-    <!-- 对话页 -->
     <div id="panel-chat" class="tab-panel active">
-      <div id="chat-window" class="chat-window"></div>
-      <!-- ══ 底部输入栏（Reasonix footer） ══ -->
-      <div id="bottom-bar" class="footer">
-        <div class="bb-row1">
-          <div class="bb-tools">
-            <button class="tool-btn" id="btn-upload" title="上传文件">📎</button>
-            <button class="tool-btn" id="btn-term" title="终端调用">🖥</button>
-            <button class="tool-btn" id="btn-web" title="网页访问">🌐</button>
-            <button class="tool-btn" id="btn-repo" title="代码仓库">📦</button>
-            <select id="orch-mode" class="tool-select" title="编排模式">
-              <option value="fanout">扇出</option>
-              <option value="pipeline">流水线</option>
-              <option value="map-reduce">拆分-归约</option>
-              <option value="supervisor">评审合成</option>
-            </select>
+      <div id="chat-window" class="chat-window">
+        <div class="welcome" id="welcome">
+          <div class="welcome__brand"><span class="brand-wordmark brand-wordmark--welcome">Deep<span>Fusion</span> 深融</span></div>
+          <div class="welcome__tag">AI 桌面智能体 · DSH 编排 × Reasonix 引擎</div>
+          <div class="welcome__meta">
+            <div class="welcome__pill"><strong>模型</strong><span id="welcome-model">deepseek-v4-flash</span></div>
+            <div class="welcome__pill"><strong>引擎</strong><span id="welcome-cwd">深融工作台 v0.7</span></div>
           </div>
-          <div class="bb-modes" id="mode-bar">
-            <button class="mode-btn active" data-mode="normal" title="常规">常规</button>
-            <button class="mode-btn" data-mode="ask" title="工具执行前需确认">询问</button>
-            <button class="mode-btn" data-mode="auto" title="自主调用工具">自动</button>
-            <button class="mode-btn" data-mode="yolo" title="无限制自主执行">Yolo</button>
-            <button class="mode-btn" data-mode="standard" title="标准">标准</button>
-            <button class="mode-btn" data-mode="deliver" title="交付模式">交付</button>
+          <div class="welcome__hints">
+            <span><kbd>/</kbd> / 命令</span>
+            <span><kbd>Shift+Tab</kbd> 计划</span>
+            <span><kbd>Ctrl+Y</kbd> YOLO</span>
+            <span><kbd>Esc×2</kbd> 停止</span>
+          </div>
+          <div class="welcome__examples">
+            <button class="welcome__ex" data-prompt="解释项目结构">解释项目结构</button>
+            <button class="welcome__ex" data-prompt="查找并修复错误">查找并修复错误</button>
+            <button class="welcome__ex" data-prompt="为主模块编写测试">为主模块编写测试</button>
+            <button class="welcome__ex" data-prompt="🧩 多代理：分析项目架构并输出优化建议">🧩 多代理：分析项目架构</button>
           </div>
         </div>
-        <div class="bb-input-row">
-          <textarea id="chat-input" placeholder="输入消息… Enter 发送 / Shift+Enter 换行" rows="3"></textarea>
-          <div class="bb-actions">
-            <button id="btn-chat-stop" class="btn-ghost hidden" title="停止生成">⏹ 停止</button>
-            <button id="btn-chat-send" class="btn-primary">发送 ↑</button>
-          </div>
+      </div>
+      <footer class="footer" id="bottom-bar">
+        <div class="toolbar">
+          <button class="toolbar__btn mode-btn active" data-mode="normal" title="常规">常规</button>
+          <button class="toolbar__btn mode-btn" data-mode="ask" title="工具执行前需确认">询问</button>
+          <button class="toolbar__btn mode-btn" data-mode="auto" title="自动模式（自动批准）"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12l2 2 4-4"/></svg>自动</button>
+          <button class="toolbar__btn mode-btn" data-mode="yolo" title="无限制自主执行"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>YOLO</button>
+          <button class="toolbar__btn mode-btn" data-mode="standard" title="标准">标准</button>
+          <button class="toolbar__btn mode-btn" data-mode="deliver" title="交付模式">交付</button>
+          <div class="toolbar__sep"></div>
+          <div class="status"><span class="status__dot" style="background: var(--success);"></span><span>已连接</span></div>
+          <div class="toolbar__sep"></div>
+          <button class="toolbar__btn" id="btn-upload" title="上传文件">📎</button>
+          <button class="toolbar__btn" id="btn-term" title="终端调用">🖥</button>
+          <button class="toolbar__btn" id="btn-web" title="网页访问">🌐</button>
+          <button class="toolbar__btn" id="btn-repo" title="代码仓库">📦</button>
+          <select id="orch-mode" class="tool-select" title="编排模式">
+            <option value="fanout">扇出</option>
+            <option value="pipeline">流水线</option>
+            <option value="map-reduce">拆分-归约</option>
+            <option value="supervisor">评审合成</option>
+          </select>
+          <button class="toolbar__btn" id="btn-orch" title="启动编排">⚡</button>
+        </div>
+        <div class="composer">
+          <span class="composer__caret">›</span>
+          <textarea class="composer__input" id="chat-input" placeholder="给 DeepFusion 发消息... / 查看命令" rows="1"></textarea>
+          <button class="composer__btn composer__btn--stop hidden" id="btn-chat-stop" title="停止生成 (Esc)">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+          </button>
+          <button class="composer__btn composer__btn--send" id="btn-chat-send" title="发送 (Enter)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+          </button>
         </div>
         <div class="bb-meta">
           <select id="chat-model" class="chat-model" title="模型切换">
@@ -107,15 +146,13 @@
           <span class="dot-sep">·</span>
           <span id="chat-cost"></span>
         </div>
-      </div>
+      </footer>
     </div>
 
-    <!-- 思考轨迹页 -->
     <div id="panel-trace" class="tab-panel">
       <div id="trace-window" class="trace-window"><div class="panel-empty">思考轨迹将在此展示任务拆解与子代理全链路</div></div>
     </div>
 
-    <!-- 上下文页 -->
     <div id="panel-context" class="tab-panel">
       <div id="context-window" class="context-window"><div class="panel-empty">系统提示词 / 历史对话 / 工具调用记录管理</div></div>
     </div>
