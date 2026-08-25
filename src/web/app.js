@@ -570,6 +570,125 @@ if (savedMode) {
 // 对话默认页面
 $('chat-window').innerHTML = '<div class="chat-empty"><div class="ce-big">💬</div>开始新对话。输入消息并发送。</div>';
 
+/* ========== 多编排模式 ========== */
+
+$('btn-orch')?.addEventListener('click', startOrchestration);
+
+async function startOrchestration() {
+  const input = $('chat-input');
+  const objective = input.value.trim();
+  if (!objective || chatBusy) return;
+  const mode = $('orch-mode')?.value || 'fanout';
+  const w = $('chat-window');
+  const empty = w.querySelector('.chat-empty');
+  if (empty) empty.remove();
+  const modeLabel = { fanout: '扇出并行', pipeline: '流水线', 'map-reduce': '拆分-归约', supervisor: '评审合成' }[mode] || mode;
+  w.insertAdjacentHTML('beforeend', '<div class="msg user"><div class="msg-bubble">⚡ ' + modeLabel + '：' + esc(objective) + '</div></div>');
+  const card = document.createElement('div');
+  card.className = 'msg assistant';
+  card.innerHTML = '<div class="msg-bubble"><div class="goal-card" id="orch-card"><div class="goal-head">⚡ ' + modeLabel + ' 编排中…</div><div class="goal-progress">拆解目标…</div><div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div></div></div>';
+  w.appendChild(card);
+  w.scrollTop = w.scrollHeight;
+  input.value = '';
+
+  try {
+    const j = await api('/api/orchestrate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, objective, deep: false, concurrency: 2 })
+    });
+    if (!j.ok) throw new Error(j.error || '编排创建失败');
+    pollOrchestration(j.orchestration.id, card, modeLabel);
+  } catch (e) {
+    card.querySelector('.goal-head').textContent = '❌ 编排失败: ' + e.message;
+  }
+}
+
+const orchPollers = new Map();
+function pollOrchestration(orchId, card, modeLabel) {
+  if (orchPollers.has(orchId)) return;
+  orchPollers.set(orchId, true);
+  const update = async () => {
+    try {
+      const j = await api('/api/orchestrations/' + orchId);
+      if (!j.ok) return;
+      const o = j.orchestration;
+      const head = card.querySelector('.goal-head');
+      const prog = card.querySelector('.goal-progress');
+      const fill = card.querySelector('.progress-fill');
+      if (head) {
+        if (o.status === 'done') head.textContent = '✅ ' + modeLabel + ' 完成 · ' + (o.summary || '');
+        else if (o.status === 'failed') head.textContent = '❌ ' + modeLabel + ' 失败: ' + (o.error || '');
+        else if (o.status === 'blocked') head.textContent = '🚫 ' + modeLabel + ' 熔断: ' + (o.blocked || '');
+        else head.textContent = '⚡ ' + modeLabel + ' · ' + (o.doneCount || 0) + '/' + (o.totalCount || 0);
+      }
+      if (prog) {
+        const detail = (o.steps || []).map(s => (s.status === 'done' ? '✅' : s.status === 'running' ? '⏳' : s.status === 'failed' ? '❌' : '⬜') + ' ' + esc(s.title)).join('　');
+        prog.textContent = detail || o.phase || '执行中…';
+      }
+      if (fill) {
+        const pct = o.totalCount ? Math.round(o.doneCount / o.totalCount * 100) : 0;
+        fill.style.width = pct + '%';
+      }
+      if (o.status === 'done' || o.status === 'failed' || o.status === 'blocked') {
+        orchPollers.delete(orchId);
+        if (o.result && o.status === 'done') {
+          card.querySelector('.msg-bubble').insertAdjacentHTML('beforeend', '<div class="text-part" style="margin-top:8px;border-top:1px dashed var(--border-soft);padding-top:8px">' + esc(o.result).slice(0, 3000) + '</div>');
+        }
+        refreshRightPanel();
+        renderTracePanel();
+        return;
+      }
+      setTimeout(update, 2500);
+    } catch { setTimeout(update, 3000); }
+  };
+  update();
+}
+
+/* ========== 增强 trace 面板：展示编排记录 ========== */
+
+async function renderTracePanel() {
+  const el = $('trace-window');
+  if (!el) return;
+  try {
+    const [goalsJ, orchJ] = await Promise.all([
+      api('/api/goals'),
+      api('/api/orchestrations')
+    ]);
+    const goals = goalsJ.goals || [];
+    const orchs = orchJ.orchestrations || [];
+    if (!goals.length && !orchs.length) {
+      el.innerHTML = '<div class="panel-empty">暂无任务执行记录。使用 🧩 多代理或 ⚡ 编排后，执行链路将在此展示。</div>';
+      return;
+    }
+    // 编排记录
+    let html = '';
+    if (orchs.length) {
+      html += '<h3 style="margin:8px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)">⚡ 编排记录</h3>';
+      html += orchs.slice(0, 5).map(o => {
+        const modeLabel = { fanout: '扇出', pipeline: '流水线', 'map-reduce': '拆分-归约', supervisor: '评审合成' }[o.mode] || o.mode;
+        const steps = [];
+        if (o.result) steps.push('<div class="trace-node done"><div class="tn-head">✅ 结果</div><div class="tn-body">' + esc(o.result).slice(0, 300) + '</div></div>');
+        return '<div class="trace-group" style="margin-bottom:10px"><div class="trace-group-head">⚡ ' + modeLabel + '：' + esc(o.objective).slice(0, 40) + ' <span class="trace-status">' + (o.status === 'done' ? '✅ 完成' : o.status === 'failed' ? '❌ 失败' : o.status === 'blocked' ? '🚫 熔断' : '⏳ 进行中') + '</span></div>' + steps.join('') + '</div>';
+      }).join('');
+    }
+    // 目标记录
+    if (goals.length) {
+      html += '<h3 style="margin:12px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)">🧩 多代理目标</h3>';
+      html += goals.slice(0, 5).map(g => {
+        const steps = [];
+        if (g.summary) steps.push('<div class="trace-node done"><div class="tn-head">✅ ' + esc(g.summary).slice(0, 100) + '</div></div>');
+        return '<div class="trace-group" style="margin-bottom:10px"><div class="trace-group-head">🎯 ' + esc(g.objective).slice(0, 40) + ' <span class="trace-status">' + (g.status === 'done' ? '✅ 完成' : g.status === 'failed' ? '❌ 失败' : '⏳ 进行中') + '</span></div>' + steps.join('') + '</div>';
+      }).join('');
+    }
+    el.innerHTML = html;
+  } catch {
+    el.innerHTML = '<div class="panel-empty">加载轨迹失败</div>';
+  }
+}
+
+// 替换原有的 renderTracePanel（旧版单纯 goals 渲染）
+// 已用新版覆盖
+
 refresh();
 setInterval(refresh, 15000);
 
@@ -586,32 +705,6 @@ window.retryLastChat = function() {
 };
 
 /* ========== 思考轨迹页渲染 ========== */
-
-async function renderTracePanel() {
-  const el = $('trace-window');
-  if (!el) return;
-  try {
-    const j = await api('/api/goals');
-    const goals = j.goals || [];
-    if (!goals.length) {
-      el.innerHTML = '<div class="panel-empty">暂无任务执行记录。使用多代理功能后，任务拆解与子代理全链路将在此展示。</div>';
-      return;
-    }
-    // 取最新 5 个目标
-    const recent = goals.slice(0, 5);
-    el.innerHTML = recent.map(g => {
-      const steps = (g.steps || []).filter(s => s.title);
-      const stepHtml = steps.length
-        ? steps.map(s => {
-            const icon = s.status === 'done' ? '✅' : s.status === 'running' ? '⏳' : s.status === 'failed' ? '❌' : '⬜';
-            const result = s.result ? '<div class="trace-result">' + esc(s.result).slice(0, 200) + '</div>' : '';
-            return '<div class="trace-node ' + (s.status||'') + '"><div class="tn-head">' + icon + ' ' + esc(s.title) + '</div><div class="tn-meta">' + (s.status||'pending') + (s.durationMs ? ' · ' + (s.durationMs/1000).toFixed(1) + 's' : '') + '</div>' + result + '</div>';
-          }).join('')
-        : '<div class="trace-node"><div class="tn-head">⏳ 拆解中…</div><div class="tn-meta">总指挥正在拆解目标</div></div>';
-      return '<div class="trace-group"><div class="trace-group-head">🎯 ' + esc(g.objective).slice(0, 40) + (g.objective.length > 40 ? '…' : '') + ' <span class="trace-status">' + (g.status === 'done' ? '✅ 完成' : g.status === 'failed' ? '❌ 失败' : '⏳ 进行中') + '</span></div>' + stepHtml + '</div>';
-    }).join('');
-  } catch {}
-}
 
 /* ========== 上下文页渲染 ========== */
 

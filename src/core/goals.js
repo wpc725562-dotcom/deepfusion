@@ -111,4 +111,26 @@ async function runGoal(goal, concurrency) {
   } catch (e) {
     goal.status = 'failed'; goal.error = String(e.message || e);
   }
+}/** goals.js 增强：resume 续跑 + 衰减式熔断 + revision 状态机 */
+
+/* ---------------- 续跑 ---------------- */
+export async function resumeGoal(goalId) {
+  const goal = goals.get(goalId);
+  if (!goal) throw new Error('目标不存在: ' + goalId);
+  if (goal.status !== 'failed' && goal.status !== 'blocked') throw new Error('只有 failed/blocked 状态可续跑，当前: ' + goal.status);
+  goal.revision = (goal.revision || 1) + 1;
+  goal.roundsStarted = (goal.roundsStarted || 0) + 1;
+  goal.status = 'running'; goal.phase = 'decomposing';
+  goal.error = null; goal.blocked = null;
+  goal.steps = []; goal.doneCount = 0; goal.totalCount = 0;
+  runGoal(goal, goal.concurrency || 2).catch((e) => {
+    if (Array.isArray(goal.recentErrors) && goal.recentErrors.length >= 3) {
+      const last = goal.recentErrors.slice(-3);
+      if (last[0] === last[1] && last[1] === last[2]) {
+        goal.status = 'blocked'; goal.blocked = '连续 3 轮同因失败，标记为 blocked';
+      }
+    }
+    if (goal.status !== 'blocked') { goal.status = 'failed'; goal.error = String(e.message || e); }
+  });
+  return { id: goal.id, revision: goal.revision, status: goal.status };
 }

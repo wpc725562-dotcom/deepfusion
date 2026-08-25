@@ -56,6 +56,13 @@
             <button class="tool-btn" id="btn-web" title="网页访问">🌐</button>
             <button class="tool-btn" id="btn-repo" title="代码仓库">📦</button>
             <button class="tool-btn" id="btn-goal" title="多代理执行（总指挥拆解 → 子代理池）">🧩</button>
+            <select id="orch-mode" class="tool-select" title="编排模式">
+              <option value="fanout">扇出</option>
+              <option value="pipeline">流水线</option>
+              <option value="map-reduce">拆分-归约</option>
+              <option value="supervisor">评审合成</option>
+            </select>
+            <button class="tool-btn" id="btn-orch" title="启动编排">⚡</button>
           </div>
           <div class="bb-modes" id="mode-bar">
             <button class="mode-btn active" data-mode="normal" title="常规">常规</button>

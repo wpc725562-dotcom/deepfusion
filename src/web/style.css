@@ -231,6 +231,12 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   width: 30px; height: 30px; font-size: 14px; transition: all .15s;
 }
 .tool-btn:hover { border-color: var(--accent); color: var(--accent); }
+.tool-select {
+  background: var(--bg-elev); border: 1px solid var(--border-soft);
+  color: var(--text); border-radius: var(--radius-sm); height: 30px;
+  padding: 0 6px; font-size: 12px; cursor: pointer; outline: none;
+}
+.tool-select:hover { border-color: var(--accent); }
 .bb-modes { display: flex; gap: 4px; flex: 1; overflow-x: auto; }
 .mode-btn {
   background: transparent; border: 1px solid var(--border-soft);

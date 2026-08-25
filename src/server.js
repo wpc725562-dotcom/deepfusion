@@ -38,7 +38,9 @@ import { overview, dispatchToReasonix, dispatchAllPending, engineConfig } from '
 import { createTask, applyAction, getTask, listTasks } from './core/queue.js';
 import { listConversations, getConversation, createConversation, appendMessage, buildContextPrompt } from './core/conversations.js';
 import { runReasonixTask } from './engine/runner.js';
-import { createGoal, getGoal, listGoals } from './core/goals.js';
+import { createGoal, getGoal, listGoals, resumeGoal } from './core/goals.js';
+import { createOrchestration, getOrchestration, listOrchestrations } from './core/orchestration.js';
+import { createJob, getJob, listJobs, killJob } from './core/jobs.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(__dirname, 'web');
@@ -366,6 +368,68 @@ const server = http.createServer(async (req, res) => {
       if (!body.objective || !String(body.objective).trim()) return fail(res, 400, '缺少 objective');
       const r = await createGoal(String(body.objective).trim(), { deep: !!body.deep, concurrency: Number(body.concurrency) || 2 });
       return ok(res, { ok: true, goal: r });
+    }
+
+    // 目标续跑
+    gm = p.match(/^\/api\/goals\/([^/]+)\/resume$/);
+    if (method === 'POST' && gm) {
+      try {
+        const r = await resumeGoal(gm[1]);
+        return ok(res, { ok: true, goal: r });
+      } catch (e) { return fail(res, 400, String(e.message || e)); }
+    }
+
+    // 多编排模式
+    if (method === 'GET' && p === '/api/orchestrations') return ok(res, { ok: true, orchestrations: listOrchestrations() });
+
+    let om = p.match(/^\/api\/orchestrations\/([^/]+)$/);
+    if (method === 'GET' && om) {
+      const o = getOrchestration(om[1]);
+      if (!o) return fail(res, 404, '编排不存在');
+      return ok(res, { ok: true, orchestration: o });
+    }
+
+    if (method === 'POST' && p === '/api/orchestrate') {
+      const body = await readBody(req);
+      if (body.__parseError) return fail(res, 400, 'body 不是合法 JSON');
+      if (!body.objective || !String(body.objective).trim()) return fail(res, 400, '缺少 objective');
+      try {
+        const r = await createOrchestration({
+          mode: body.mode || 'fanout',
+          objective: String(body.objective).trim(),
+          concurrency: Number(body.concurrency) || 2,
+          reviewers: Number(body.reviewers) || 3,
+          rounds: Number(body.rounds) || 1,
+          deep: !!body.deep
+        });
+        return ok(res, { ok: true, orchestration: r });
+      } catch (e) { return fail(res, 400, String(e.message || e)); }
+    }
+
+    // 后台任务管理
+    if (method === 'GET' && p === '/api/jobs') return ok(res, { ok: true, jobs: listJobs() });
+
+    let jm = p.match(/^\/api\/jobs\/([^/]+)$/);
+    if (method === 'GET' && jm) {
+      const j = getJob(jm[1]);
+      if (!j) return fail(res, 404, '任务不存在');
+      return ok(res, { ok: true, job: j });
+    }
+
+    if (method === 'POST' && p === '/api/jobs') {
+      const body = await readBody(req);
+      if (body.__parseError) return fail(res, 400, 'body 不是合法 JSON');
+      if (!body.title) return fail(res, 400, '缺少 title');
+      const j = createJob({ title: body.title, type: body.type || 'async' });
+      return ok(res, { ok: true, job: j });
+    }
+
+    jm = p.match(/^\/api\/jobs\/([^/]+)\/kill$/);
+    if (method === 'POST' && jm) {
+      try {
+        const j = killJob(jm[1]);
+        return ok(res, { ok: true, job: j });
+      } catch (e) { return fail(res, 400, String(e.message || e)); }
     }
 
     // 创建任务
