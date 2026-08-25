@@ -350,7 +350,7 @@ function renderAssistantBody(text) {
     // 代码块
     const codeMatch = remaining.match(/^```(\w*)\n?([\s\S]*?)\n?```/);
     if (codeMatch) {
-      out.push('<div class="code-block"><div class="code-head"><span class="code-lang">' + esc(codeMatch[1] || 'text') + '</span><button onclick="copyCode(this)">📋</button></div><div class="code-body"><pre>' + esc(codeMatch[2]) + '</pre></div></div>');
+      out.push('<div class="code-block"><div class="code-head"><span class="code-lang">' + esc(codeMatch[1] || 'text') + '</span><button onclick="copyCode(this)" title="复制">📋</button><button onclick="rerunCode(this)" title="重新运行代码" class="btn-rerun">▶ 运行</button></div><div class="code-body"><pre>' + esc(codeMatch[2]) + '</pre></div></div>');
       remaining = remaining.slice(codeMatch[0].length);
       continue;
     }
@@ -373,6 +373,23 @@ function renderAssistantBody(text) {
 function copyCode(btn) {
   const pre = btn.closest('.code-block')?.querySelector('pre');
   if (pre) { navigator.clipboard.writeText(pre.textContent); btn.textContent = '✅'; setTimeout(() => btn.textContent = '📋', 1500); }
+}
+
+function rerunCode(btn) {
+  const block = btn.closest('.code-block');
+  if (!block) return;
+  const pre = block.querySelector('pre');
+  const lang = block.querySelector('.code-lang')?.textContent || '';
+  if (!pre) return;
+  const code = pre.textContent;
+  const input = $('chat-input');
+  if (!input) return;
+  // 将代码放入输入框并触发发送
+  input.value = '运行以下 ' + lang + ' 代码并输出结果：\n```' + lang + '\n' + code + '\n```';
+  input.focus();
+  // 自动触发发送
+  const sendBtn = $('btn-chat-send');
+  if (sendBtn && !sendBtn.disabled) sendBtn.click();
 }
 
 /* ========== SSE 流式对话 ========== */
@@ -434,12 +451,15 @@ async function sendChat() {
         const ev = parseSSE(raw);
         if (!ev) continue;
         handleSSEEvent(ev, msgDiv, bodyEl, (v) => { finalText = v; }, (v) => { finalUsage = v; }, (v) => { finalDuration = v; }, (v) => { finalOk = v; });
+        // 实时更新右侧面板：context 和 usage 事件触发刷新
+        if (ev.event === 'context' || ev.event === 'usage') refreshRightPanel();
       }
     }
     // buf 剩余
     if (buf.trim()) {
       const ev = parseSSE(buf.trim());
       if (ev) handleSSEEvent(ev, msgDiv, bodyEl, (v) => { finalText = v; }, (v) => { finalUsage = v; }, (v) => { finalDuration = v; }, (v) => { finalOk = v; });
+      if (ev && (ev.event === 'context' || ev.event === 'usage')) refreshRightPanel();
     }
 
     // 打字机收尾：吐完剩余字符再移除光标
@@ -471,7 +491,11 @@ async function sendChat() {
     if (e.name === 'AbortError') {
       bodyEl.innerHTML = '（已停止）';
     } else {
-      bodyEl.innerHTML = '（请求失败: ' + esc(e.message) + '）<button class="btn-retry" onclick="window.retryLastChat()">🔄 重试</button>';
+      const errMsg = esc(e.message || '未知错误');
+      const errStack = e.stack ? esc(e.stack.split('\n').slice(1).join('\n')) : '';
+      bodyEl.innerHTML = '<div class="err-header">❌ 请求失败: ' + errMsg + '</div>'
+        + (errStack ? '<details class="err-stack"><summary>🔍 查看完整错误</summary><pre>' + errStack + '</pre></details>' : '')
+        + '<button class="btn-retry" onclick="window.retryLastChat()">🔄 重试</button>';
       msgDiv.classList.add('error');
     }
     msgDiv.querySelector('.stream-cursor')?.remove();
@@ -520,7 +544,11 @@ function handleSSEEvent(ev, msgDiv, bodyEl, setFinalText, setFinalUsage, setFina
       setFinalText(d.text || '');
       setFinalDuration(d.durationMs);
       setFinalOk(d.ok);
-      if (d.error) Typewriter.push('\n[错误: ' + d.error + ']');
+      if (d.error) {
+        Typewriter.push('\n[错误]');
+        // 将完整错误追加到 body（在流式结束后渲染）
+        msgDiv.classList.add('error');
+      }
       break;
   }
 }
