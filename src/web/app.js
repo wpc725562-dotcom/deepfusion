@@ -111,6 +111,48 @@ function esc(s) {
 
 function formatTime(d) { return (d || '').slice(5, 16).replace('T', ' '); }
 
+/* ========== 打字机（SSE 增量文本逐字吐出） ========== */
+const Typewriter = (() => {
+  let el = null, queue = '', timer = null;
+  const TICK = 30;   // 每 30ms
+  const CHARS = 2;   // 每次 2 字符 ≈ 66 字符/秒
+  function pump() {
+    if (!el) return;
+    if (queue) {
+      el.textContent += queue.slice(0, CHARS);
+      queue = queue.slice(CHARS);
+      const w = $('chat-window');
+      if (w) w.scrollTop = w.scrollHeight;
+      timer = setTimeout(pump, TICK);
+    } else {
+      timer = null;
+    }
+  }
+  return {
+    attach(target) { el = target; queue = ''; if (timer) { clearTimeout(timer); timer = null; } },
+    push(text) { if (el && text) { queue += text; if (!timer) pump(); } },
+    flush() { if (el && queue) { el.textContent += queue; queue = ''; } if (timer) { clearTimeout(timer); timer = null; } },
+    detach() { el = null; queue = ''; if (timer) { clearTimeout(timer); timer = null; } }
+  };
+})();
+
+/* ========== 弹窗进出场动画（.open/.closing 由 CSS transition 驱动） ========== */
+function showModal(overlay) {
+  requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('open')));
+}
+function hideModal(overlay, done) {
+  overlay.classList.add('closing');
+  setTimeout(() => { overlay.remove(); done && done(); }, 150);
+}
+
+/* ========== 忙碌态控件禁用 ========== */
+function setControlsBusy(busy) {
+  ['btn-chat-send', 'btn-goal', 'btn-orch'].forEach(id => {
+    const b = $(id);
+    if (b) b.disabled = busy;
+  });
+}
+
 /* ========== 多代理执行（总指挥 → 子代理池） ========== */
 
 $('btn-goal')?.addEventListener('click', startMultiAgent);
@@ -341,7 +383,7 @@ async function sendChat() {
   _lastChatText = text;
   _lastChatModel = $('chat-model')?.value;
   _lastChatMode = currentMode;
-  $('btn-chat-send').disabled = true;
+  setControlsBusy(true);
   $('btn-chat-send').textContent = '发送中';
   $('btn-chat-stop').classList.remove('hidden');
   const model = $('chat-model')?.value || 'tokenrhythm/deepseek-v4-flash';
@@ -358,6 +400,7 @@ async function sendChat() {
   w.appendChild(msgDiv);
   w.scrollTop = w.scrollHeight;
   const bodyEl = msgDiv.querySelector('.stream-body');
+  Typewriter.attach(bodyEl);
   input.value = '';
   updateTokenEst(text.length);
 
@@ -397,7 +440,9 @@ async function sendChat() {
       if (ev) handleSSEEvent(ev, msgDiv, bodyEl, (v) => { finalText = v; }, (v) => { finalUsage = v; }, (v) => { finalDuration = v; }, (v) => { finalOk = v; });
     }
 
-    // 移除光标
+    // 打字机收尾：吐完剩余字符再移除光标
+    Typewriter.flush();
+    Typewriter.detach();
     const cursor = msgDiv.querySelector('.stream-cursor');
     if (cursor) cursor.remove();
 
@@ -419,6 +464,8 @@ async function sendChat() {
     // 刷新右侧面板
     refreshRightPanel();
   } catch (e) {
+    Typewriter.flush();
+    Typewriter.detach();
     if (e.name === 'AbortError') {
       bodyEl.innerHTML = '（已停止）';
     } else {
@@ -428,7 +475,7 @@ async function sendChat() {
     msgDiv.querySelector('.stream-cursor')?.remove();
   }
   chatBusy = false;
-  $('btn-chat-send').disabled = false;
+  setControlsBusy(false);
   $('btn-chat-send').textContent = '发送 ↑';
   $('btn-chat-stop').classList.add('hidden');
   stopController = null;
@@ -455,7 +502,7 @@ function handleSSEEvent(ev, msgDiv, bodyEl, setFinalText, setFinalUsage, setFina
       if (d.conversationId) { currentConvId = d.conversationId; msgDiv.dataset.cid = d.conversationId; }
       break;
     case 'text':
-      if (d.text) bodyEl.innerHTML += esc(d.text);
+      if (d.text) Typewriter.push(d.text);
       break;
     case 'phase':
       // 可选：显示阶段指示
@@ -471,7 +518,7 @@ function handleSSEEvent(ev, msgDiv, bodyEl, setFinalText, setFinalUsage, setFina
       setFinalText(d.text || '');
       setFinalDuration(d.durationMs);
       setFinalOk(d.ok);
-      if (d.error) bodyEl.innerHTML += '\n[错误: ' + esc(d.error) + ']';
+      if (d.error) Typewriter.push('\n[错误: ' + d.error + ']');
       break;
   }
 }
@@ -623,6 +670,7 @@ function openSettingsModal() {
     '</div>' +
   '</div>';
   document.body.appendChild(overlay);
+  showModal(overlay);
   const close = () => closeSettingsModal(overlay);
   overlay.querySelector('#dlg-close').onclick = close;
   overlay.querySelector('#dlg-save').onclick = () => {
@@ -642,7 +690,7 @@ function openSettingsModal() {
 }
 
 function closeSettingsModal(overlay) {
-  if (overlay && overlay.parentNode) overlay.remove();
+  if (overlay && overlay.parentNode) hideModal(overlay);
   if (location.hash === '#settings') history.replaceState(null, '', location.pathname + location.search);
 }
 
@@ -896,6 +944,7 @@ function openPhoneModal() {
     '<div class="modal-actions"><button class="btn-ghost" id="pocket-close">关闭</button></div>' +
   '</div>';
   document.body.appendChild(overlay);
+  showModal(overlay);
   pocketOverlay = overlay;
   wirePocketActions(overlay);
   refreshPocketModal(overlay);
@@ -910,7 +959,7 @@ function closePhoneModal() {
   const overlay = pocketOverlay;
   pocketOverlay = null;
   PollScheduler.unregister(POCKET_POLL_ID);
-  if (overlay && overlay.parentNode) overlay.remove();
+  if (overlay && overlay.parentNode) hideModal(overlay);
   if (location.hash === '#phone') history.replaceState(null, '', location.pathname + location.search);
 }
 

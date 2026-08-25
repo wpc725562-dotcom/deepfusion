@@ -360,3 +360,14 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 .pk-disc { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; color: #fbbc04; margin: 8px 0; line-height: 1.5; }
 .pocket-custom { border-top: 1px dashed var(--border-soft, #2a3040); margin-top: 8px; padding-top: 8px; }
 .hidden { display: none !important; }
+
+/* ===== 弹窗进出场动画 ===== */
+.modal-mask { opacity: 0; transition: opacity .16s ease; }
+.modal-mask.open { opacity: 1; }
+.modal-mask .modal { opacity: 0; transform: translateY(14px) scale(.96); transition: opacity .18s ease, transform .2s cubic-bezier(.2,.9,.3,1.15); }
+.modal-mask.open .modal { opacity: 1; transform: none; }
+.modal-mask.closing { opacity: 0; }
+.modal-mask.closing .modal { opacity: 0; transform: translateY(8px) scale(.97); transition-duration: .12s; }
+
+/* ===== 按钮禁用态 ===== */
+button:disabled { opacity: .45; cursor: not-allowed; }
